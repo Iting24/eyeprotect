@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">eyeprotect</string>
+    <string name="accessibility_service_description">This service monitors your posture and distance from the screen to help you maintain good eye health.</string>
+</resources>
