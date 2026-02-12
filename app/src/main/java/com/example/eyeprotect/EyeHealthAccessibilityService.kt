@@ -103,7 +103,14 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
         lifecycleRegistry.currentState = Lifecycle.State.STARTED
 
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        tts.setOnUtteranceProgressListener(null)
+
+        if (!::faceDetector.isInitialized) {
+            Log.e(TAG, "FaceDetector dependency is not initialized; skipping camera startup.")
+            return
+        }
+        if (!::tts.isInitialized) {
+            Log.e(TAG, "TextToSpeech dependency is not initialized; skipping audio warnings.")
+        }
 
         startCamera()
         createNotificationChannel()
@@ -113,23 +120,23 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
     private fun startCamera() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
         cameraProviderFuture.addListener({
-            val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
-
-            val imageAnalyzer = ImageAnalysis.Builder()
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .build()
-                .also {
-                    it.setAnalyzer(cameraExecutor, this::analyzeImage)
-                }
-
-            val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
-
             try {
+                val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
+
+                val imageAnalyzer = ImageAnalysis.Builder()
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .build()
+                    .also {
+                        it.setAnalyzer(cameraExecutor, this::analyzeImage)
+                    }
+
+                val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
+
                 cameraProvider.unbindAll()
                 cameraProvider.bindToLifecycle(this, cameraSelector, imageAnalyzer)
                 Log.d(TAG, "Camera started successfully.")
             } catch (e: Exception) {
-                Log.e(TAG, "CameraX binding failed", e)
+                Log.e(TAG, "CameraX initialization/binding failed", e)
             }
         }, ContextCompat.getMainExecutor(this))
     }
@@ -145,7 +152,12 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
         lastDetectionTimestamp = currentTimestamp
 
         val image = imageProxy.image
-        if (image != null) {
+        if (image == null) {
+            imageProxy.close()
+            return
+        }
+
+        try {
             val inputImage = com.google.mlkit.vision.common.InputImage.fromMediaImage(image, imageProxy.imageInfo.rotationDegrees)
             faceDetector.process(inputImage)
                 .addOnSuccessListener {
@@ -157,6 +169,9 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
                 .addOnCompleteListener {
                     imageProxy.close()
                 }
+        } catch (e: Exception) {
+            Log.e(TAG, "Face detection pipeline crashed", e)
+            imageProxy.close()
         }
     }
 
@@ -230,6 +245,7 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
     }
 
     private fun speakWarning(text: String) {
+        if (!::tts.isInitialized) return
         if (tts.isSpeaking) return
         tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "")
     }
@@ -285,9 +301,13 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
         unregisterReceiver(thresholdUpdateReceiver)
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
         cameraExecutor.shutdown()
-        faceDetector.close()
-        tts.stop()
-        tts.shutdown()
+        if (::faceDetector.isInitialized) {
+            faceDetector.close()
+        }
+        if (::tts.isInitialized) {
+            tts.stop()
+            tts.shutdown()
+        }
         hideScreenOverlay()
         Log.d(TAG, "Accessibility Service destroyed.")
     }

@@ -25,7 +25,6 @@ object EyeHealthModule {
             .build()
 
     @Provides
-    @Singleton
     fun provideFaceDetector(options: FaceDetectorOptions): FaceDetector =
         FaceDetection.getClient(options)
 
