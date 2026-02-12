@@ -32,6 +32,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import com.google.mlkit.vision.face.FaceDetector
+import com.google.mlkit.vision.face.Face
 import com.yit.eyeprotect.R
 import dagger.hilt.android.AndroidEntryPoint
 import java.util.Locale
@@ -160,8 +161,13 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
         try {
             val inputImage = com.google.mlkit.vision.common.InputImage.fromMediaImage(image, imageProxy.imageInfo.rotationDegrees)
             faceDetector.process(inputImage)
-                .addOnSuccessListener {
-                    // TODO: Implement what to do with the face detection results
+                .addOnSuccessListener { faces ->
+                    val warnings = buildWarningsFromFaces(
+                        faces = faces,
+                        frameWidth = imageProxy.width,
+                        frameHeight = imageProxy.height
+                    )
+                    handleWarningState(warnings)
                 }
                 .addOnFailureListener {
                     Log.e(TAG, "Face detection failed", it)
@@ -173,6 +179,39 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
             Log.e(TAG, "Face detection pipeline crashed", e)
             imageProxy.close()
         }
+    }
+
+    private fun buildWarningsFromFaces(
+        faces: List<Face>,
+        frameWidth: Int,
+        frameHeight: Int
+    ): Set<WarningState> {
+        if (faces.isEmpty()) return emptySet()
+
+        val primaryFace = faces.maxByOrNull { face ->
+            face.boundingBox.width() * face.boundingBox.height()
+        } ?: return emptySet()
+
+        val warnings = mutableSetOf<WarningState>()
+        val frameArea = frameWidth.toFloat() * frameHeight.toFloat()
+        if (frameArea > 0f) {
+            val faceArea = primaryFace.boundingBox.width().toFloat() * primaryFace.boundingBox.height().toFloat()
+            val faceAreaRatio = faceArea / frameArea
+            if (faceAreaRatio >= FACE_AREA_TOO_CLOSE_RATIO_THRESHOLD) {
+                warnings.add(WarningState.TOO_CLOSE)
+            }
+        }
+
+        val leftEyeOpenProbability = primaryFace.leftEyeOpenProbability
+        val rightEyeOpenProbability = primaryFace.rightEyeOpenProbability
+        if (leftEyeOpenProbability != null && rightEyeOpenProbability != null) {
+            val avgEyeOpenProbability = (leftEyeOpenProbability + rightEyeOpenProbability) / 2f
+            if (avgEyeOpenProbability <= EYE_OPEN_SQUINT_THRESHOLD) {
+                warnings.add(WarningState.SQUINTING)
+            }
+        }
+
+        return warnings
     }
 
     private fun handleWarningState(warnings: Set<WarningState>) {
@@ -334,5 +373,7 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
         private const val NOTIFICATION_ID = 1
         private const val DETECTION_INTERVAL_MS = 500L
         private const val VOICE_ALERT_COOLDOWN_MS = 10000L
+        private const val FACE_AREA_TOO_CLOSE_RATIO_THRESHOLD = 0.27f
+        private const val EYE_OPEN_SQUINT_THRESHOLD = 0.35f
     }
 }
