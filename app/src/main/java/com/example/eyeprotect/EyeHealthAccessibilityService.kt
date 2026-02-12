@@ -1,6 +1,8 @@
 package com.example.eyeprotect
 
 import android.accessibilityservice.AccessibilityService
+import android.annotation.SuppressLint
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -8,6 +10,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
@@ -19,6 +22,7 @@ import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -27,8 +31,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.google.mlkit.vision.face.FaceDetector
+import com.yit.eyeprotect.R
 import dagger.hilt.android.AndroidEntryPoint
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -43,6 +47,7 @@ import javax.inject.Inject
  */
 @AndroidEntryPoint
 @Suppress("LeakingThis")
+@ExperimentalGetImage
 class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnInitListener, LifecycleOwner {
 
     @Inject
@@ -83,7 +88,12 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
         super.onCreate()
         lifecycleRegistry = LifecycleRegistry(this)
         lifecycleRegistry.currentState = Lifecycle.State.CREATED
-        LocalBroadcastManager.getInstance(this).registerReceiver(thresholdUpdateReceiver, IntentFilter(ACTION_UPDATE_THRESHOLDS))
+        ContextCompat.registerReceiver(
+            this,
+            thresholdUpdateReceiver,
+            IntentFilter(ACTION_UPDATE_THRESHOLDS),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
     }
 
     override fun onServiceConnected() {
@@ -99,6 +109,7 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
         createNotificationChannel()
     }
 
+    @ExperimentalGetImage
     private fun startCamera() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
         cameraProviderFuture.addListener({
@@ -123,6 +134,7 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
         }, ContextCompat.getMainExecutor(this))
     }
 
+    @ExperimentalGetImage
     private fun analyzeImage(imageProxy: ImageProxy) {
         // Throttle analysis to once every 500ms
         val currentTimestamp = SystemClock.uptimeMillis()
@@ -222,7 +234,15 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
         tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "")
     }
 
+    @SuppressLint("NotificationPermission")
     private fun showWarningNotification(warningText: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            Log.w(TAG, "Skipping notification: POST_NOTIFICATIONS permission not granted.")
+            return
+        }
+
         val intent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
 
@@ -262,7 +282,7 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
 
     override fun onDestroy() {
         super.onDestroy()
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(thresholdUpdateReceiver)
+        unregisterReceiver(thresholdUpdateReceiver)
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
         cameraExecutor.shutdown()
         faceDetector.close()

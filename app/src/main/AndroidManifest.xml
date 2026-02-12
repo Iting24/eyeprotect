@@ -4,9 +4,12 @@
 
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
 
     <application
-        android:name=".MainApplication"
+        android:name="com.example.eyeprotect.MainApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -16,7 +19,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Eyeprotect">
         <activity
-            android:name=".MainActivity"
+            android:name="com.example.eyeprotect.MainActivity"
             android:exported="true"
             android:label="@string/app_name"
             android:theme="@style/Theme.Eyeprotect">
@@ -28,7 +31,7 @@
         </activity>
 
         <service
-            android:name=".EyeHealthAccessibilityService"
+            android:name="com.example.eyeprotect.EyeHealthAccessibilityService"
             android:exported="false"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>

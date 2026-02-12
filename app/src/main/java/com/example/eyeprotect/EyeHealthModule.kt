@@ -28,4 +28,8 @@ object EyeHealthModule {
     @Singleton
     fun provideFaceDetector(options: FaceDetectorOptions): FaceDetector =
         FaceDetection.getClient(options)
+
+    @Provides
+    fun provideTextToSpeech(@ApplicationContext context: Context): android.speech.tts.TextToSpeech =
+        android.speech.tts.TextToSpeech(context, null)
 }
