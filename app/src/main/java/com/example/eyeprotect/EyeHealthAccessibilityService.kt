@@ -33,7 +33,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import com.google.mlkit.vision.face.FaceDetector
 import com.google.mlkit.vision.face.Face
-import com.yit.eyeprotect.R
+import com.example.eyeprotect.R
 import dagger.hilt.android.AndroidEntryPoint
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -302,7 +302,7 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
         val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher_foreground) // Replace with a proper icon
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle("Eye Health Warning")
             .setContentText(warningText)
             .setPriority(NotificationCompat.PRIORITY_HIGH)

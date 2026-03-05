@@ -8,11 +8,11 @@ plugins {
 }
 
 android {
-  namespace = "com.yit.eyeprotect"
+  namespace = "com.example.eyeprotect"
   compileSdk = 36
 
   defaultConfig {
-    applicationId = "com.yit.eyeprotect"
+    applicationId = "com.example.eyeprotect"
     minSdk = 24
     targetSdk = 36
     versionCode = 1
@@ -82,4 +82,3 @@ dependencies {
   implementation(libs.hilt.android)
   ksp(libs.hilt.compiler)
 }
-

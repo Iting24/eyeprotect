@@ -1,4 +1,7 @@
 <resources>
     <string name="app_name">eyeprotect</string>
     <string name="accessibility_service_description">This service monitors your posture and distance from the screen to help you maintain good eye health.</string>
+    <string name="main_screen_title">開啟護眼服務</string>
+    <string name="main_screen_description">啟用無障礙服務，我們將能為您的姿勢和眼睛疲勞提供即時警告。</string>
+    <string name="enable_service_button">開啟服務</string>
 </resources>
