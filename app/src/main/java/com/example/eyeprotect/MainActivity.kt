@@ -1,8 +1,10 @@
 package com.example.eyeprotect
 
 import android.Manifest
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.provider.Settings
@@ -21,8 +23,10 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -40,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.example.eyeprotect.ui.theme.EyeprotectTheme
@@ -50,6 +55,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.delay
 import javax.inject.Inject
 import com.google.android.gms.tasks.Tasks
+import java.util.Locale
 
 enum class AppStage {
     PERMISSION,
@@ -142,6 +148,7 @@ fun AppNavigation(modifier: Modifier = Modifier, faceDetector: FaceDetector, pos
                 modifier = modifier,
                 isServiceEnabled = isServiceEnabled,
                 hasCameraPermission = hasCameraPermission,
+                hasCalibrated = hasCalibrated,
                 onRequestPermission = { hasCameraPermission = true }
             )
         }
@@ -160,6 +167,7 @@ fun AppNavigation(modifier: Modifier = Modifier, faceDetector: FaceDetector, pos
                 modifier = modifier,
                 isServiceEnabled = isServiceEnabled,
                 hasCameraPermission = hasCameraPermission,
+                hasCalibrated = hasCalibrated,
                 onReCalibrate = {
                     currentStage = AppStage.CALIBRATION
                 }
@@ -216,7 +224,7 @@ fun CalibrationScreen(
                             metricDetector.computeEyeOpenMin(face)?.let(eyeOpenMins::add)
                         }
                         if (pose != null) {
-                            metricDetector.computeSlouchAngleDegrees(pose)?.let(slouchAngles::add)
+                            metricDetector.computePostureRatio(pose)?.let(slouchAngles::add)
                         }
                     }
                     imageProxy.close()
@@ -269,7 +277,8 @@ fun CalibrationScreen(
             // 以使用者基準資料推導提醒門檻
             val distanceThreshold = irisMedian * 1.15f // 瞳距越大代表距離越近
             val squintThreshold = (eyeMedian * 0.7f).coerceIn(0.15f, 0.85f)
-            val slouchThreshold = (slouchMedian + 10.0).coerceIn(10.0, 85.0).toFloat()
+            // Posture ratio smaller => more slouching; allow some drop from baseline.
+            val slouchThreshold = (slouchMedian * 0.75).coerceIn(0.15, 2.0).toFloat()
 
             val prefs = context.getSharedPreferences("eyeprotect_prefs", Context.MODE_PRIVATE)
             prefs.edit()
@@ -389,10 +398,49 @@ fun DashboardScreen(
     modifier: Modifier = Modifier,
     isServiceEnabled: Boolean,
     hasCameraPermission: Boolean,
+    hasCalibrated: Boolean,
     onRequestPermission: (() -> Unit)? = null,
     onReCalibrate: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("eyeprotect_prefs", Context.MODE_PRIVATE) }
+
+    var liveTs by remember { mutableLongStateOf(prefs.getLong(EyeHealthAccessibilityService.PREF_LIVE_TS, 0L)) }
+    var irisNorm by remember { mutableFloatStateOf(prefs.getFloat(EyeHealthAccessibilityService.PREF_LIVE_IRIS_NORM, Float.NaN)) }
+    var eyeOpenMin by remember { mutableFloatStateOf(prefs.getFloat(EyeHealthAccessibilityService.PREF_LIVE_EYE_OPEN_MIN, Float.NaN)) }
+    var slouchScore by remember { mutableFloatStateOf(prefs.getFloat(EyeHealthAccessibilityService.PREF_LIVE_SLOUCH_SCORE, Float.NaN)) }
+    var warningsMask by remember { mutableIntStateOf(prefs.getInt(EyeHealthAccessibilityService.PREF_LIVE_WARNINGS_MASK, 0)) }
+
+    val irisThreshold = prefs.getFloat("iris_threshold", Float.NaN)
+    val eyeOpenThreshold = prefs.getFloat("eye_open_threshold", Float.NaN)
+    val slouchThreshold = prefs.getFloat("slouch_angle_threshold", Float.NaN)
+
+    DisposableEffect(context) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context, intent: Intent) {
+                if (intent.action != EyeHealthAccessibilityService.ACTION_LIVE_METRICS) return
+                liveTs = intent.getLongExtra(EyeHealthAccessibilityService.EXTRA_LIVE_TS, liveTs)
+                warningsMask = intent.getIntExtra(EyeHealthAccessibilityService.EXTRA_LIVE_WARNINGS_MASK, warningsMask)
+                if (intent.hasExtra(EyeHealthAccessibilityService.EXTRA_LIVE_IRIS_NORM)) {
+                    irisNorm = intent.getFloatExtra(EyeHealthAccessibilityService.EXTRA_LIVE_IRIS_NORM, irisNorm)
+                }
+                if (intent.hasExtra(EyeHealthAccessibilityService.EXTRA_LIVE_EYE_OPEN_MIN)) {
+                    eyeOpenMin = intent.getFloatExtra(EyeHealthAccessibilityService.EXTRA_LIVE_EYE_OPEN_MIN, eyeOpenMin)
+                }
+                if (intent.hasExtra(EyeHealthAccessibilityService.EXTRA_LIVE_SLOUCH_SCORE)) {
+                    slouchScore = intent.getFloatExtra(EyeHealthAccessibilityService.EXTRA_LIVE_SLOUCH_SCORE, slouchScore)
+                }
+            }
+        }
+
+        ContextCompat.registerReceiver(
+            context,
+            receiver,
+            IntentFilter(EyeHealthAccessibilityService.ACTION_LIVE_METRICS),
+            RECEIVER_NOT_EXPORTED
+        )
+        onDispose { context.unregisterReceiver(receiver) }
+    }
     
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -403,8 +451,9 @@ fun DashboardScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
+            .padding(24.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         GradientBorderContainer(
@@ -418,55 +467,87 @@ fun DashboardScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
-
         EyeHealthCard(isServiceEnabled = isServiceEnabled, hasCameraPermission = hasCameraPermission)
 
-        Spacer(modifier = Modifier.height(32.dp))
+        LiveMetricsCard(
+            isServiceEnabled = isServiceEnabled,
+            hasCameraPermission = hasCameraPermission,
+            liveTs = liveTs,
+            irisNorm = irisNorm,
+            eyeOpenMin = eyeOpenMin,
+            slouchScore = slouchScore,
+            warningsMask = warningsMask,
+            irisThreshold = irisThreshold,
+            eyeOpenThreshold = eyeOpenThreshold,
+            slouchThreshold = slouchThreshold
+        )
 
-        Button(
-            onClick = {
-                if (!hasCameraPermission) {
-                    permissionLauncher.launch(Manifest.permission.CAMERA)
-                } else {
+        if (!hasCameraPermission) {
+            Button(
+                onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondary,
+                    contentColor = Color.Black
+                ),
+                shape = RoundedCornerShape(24.dp),
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_enable),
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.size(8.dp))
+                    Text(
+                        text = "授權相機權限",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        } else if (hasCalibrated) {
+            Button(
+                onClick = {
                     val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                     context.startActivity(intent)
-                }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = if (isServiceEnabled && hasCameraPermission) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondary,
-                contentColor = if (isServiceEnabled && hasCameraPermission) MaterialTheme.colorScheme.onPrimaryContainer else Color.Black
-            ),
-            shape = RoundedCornerShape(24.dp),
-            elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isServiceEnabled) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondary,
+                    contentColor = if (isServiceEnabled) MaterialTheme.colorScheme.onPrimaryContainer else Color.Black
+                ),
+                shape = RoundedCornerShape(24.dp),
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
             ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_enable),
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.size(8.dp))
-                Text(
-                    text = when {
-                        !hasCameraPermission -> "授權相機權限"
-                        isServiceEnabled -> "服務運作中"
-                        else -> stringResource(id = R.string.enable_service_button)
-                    },
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_enable),
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.size(8.dp))
+                    Text(
+                        text = if (isServiceEnabled) "服務運作中" else stringResource(id = R.string.enable_service_button),
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
 
         if (hasCameraPermission && onReCalibrate != null) {
-            Spacer(modifier = Modifier.height(16.dp))
             OutlinedButton(
                 onClick = onReCalibrate,
                 modifier = Modifier
@@ -483,6 +564,143 @@ fun DashboardScreen(
             }
         }
     }
+}
+
+@Composable
+private fun LiveMetricsCard(
+    isServiceEnabled: Boolean,
+    hasCameraPermission: Boolean,
+    liveTs: Long,
+    irisNorm: Float,
+    eyeOpenMin: Float,
+    slouchScore: Float,
+    warningsMask: Int,
+    irisThreshold: Float,
+    eyeOpenThreshold: Float,
+    slouchThreshold: Float
+) {
+    val hasLive = liveTs > 0L
+    val tooClose = warningsMask and 1 != 0
+    val squinting = warningsMask and 2 != 0
+    val slouching = warningsMask and 4 != 0
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text(
+                text = "即時指標",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 20.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (!hasCameraPermission) {
+                Text(
+                    text = "尚未授權相機，無法取得即時數據。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                )
+                return@Column
+            }
+            if (!isServiceEnabled) {
+                Text(
+                    text = "尚未開啟無障礙服務，背景偵測不會更新數據。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                )
+                return@Column
+            }
+            if (!hasLive) {
+                Text(
+                    text = "等待偵測資料中。請回到主畫面停留幾秒，並確保臉部入鏡。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                )
+                return@Column
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            MetricsRow(
+                label = "距離(瞳距/寬)",
+                value = formatFloat(irisNorm),
+                threshold = if (irisThreshold.isNaN()) null else formatFloat(irisThreshold),
+                warning = tooClose
+            )
+            MetricsRow(
+                label = "咪眼(最小睜眼)",
+                value = formatFloat(eyeOpenMin),
+                threshold = if (eyeOpenThreshold.isNaN()) null else formatFloat(eyeOpenThreshold),
+                warning = squinting
+            )
+            MetricsRow(
+                label = "姿勢(耳肩/肩寬)",
+                value = formatFloat(slouchScore),
+                threshold = if (slouchThreshold.isNaN()) null else formatFloat(slouchThreshold),
+                warning = slouching
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StatusChip("太近", tooClose)
+                StatusChip("咪眼", squinting)
+                StatusChip("駝背", slouching)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MetricsRow(label: String, value: String, threshold: String?, warning: Boolean) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            fontSize = 14.sp,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
+        )
+        val right = buildString {
+            append(value)
+            if (threshold != null) append(" / ").append(threshold)
+        }
+        Text(
+            text = right,
+            style = MaterialTheme.typography.bodyMedium,
+            fontSize = 20.sp,
+            fontWeight = if (warning) FontWeight.ExtraBold else FontWeight.Medium,
+            color = if (warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
+        )
+    }
+    Spacer(modifier = Modifier.height(10.dp))
+}
+
+@Composable
+private fun StatusChip(text: String, active: Boolean) {
+    val container = if (active) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant
+    val content = if (active) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant
+    Surface(color = container, shape = RoundedCornerShape(999.dp)) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = content
+        )
+    }
+}
+
+private fun formatFloat(value: Float): String {
+    if (value.isNaN()) return "--"
+    return String.format(Locale.US, "%.3f", value)
 }
 
 @Composable

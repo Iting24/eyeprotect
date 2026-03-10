@@ -21,7 +21,9 @@ class PostureAndEyeDetector {
     var enableSquintWarning = false
 
     var irisDistanceThreshold = 0.12f
-    var slouchingAngleThresholdDegrees = 25.0
+    // Posture ratio = (ear-shoulder vertical distance) / (shoulder width).
+    // Smaller ratio means head/neck collapsed forward/down more.
+    var slouchingPostureRatioThreshold = 0.55
     var eyeOpenThreshold = 0.4f // 低於此值視為瞇眼
 
     fun computeNormalizedIrisDistance(face: Face, imageWidth: Int): Float? {
@@ -45,7 +47,7 @@ class PostureAndEyeDetector {
         }
     }
 
-    fun computeSlouchAngleDegrees(pose: Pose): Double? {
+    fun computePostureRatio(pose: Pose): Double? {
         val leftEar = pose.getPoseLandmark(PoseLandmark.LEFT_EAR)
         val rightEar = pose.getPoseLandmark(PoseLandmark.RIGHT_EAR)
         val leftShoulder = pose.getPoseLandmark(PoseLandmark.LEFT_SHOULDER)
@@ -66,8 +68,7 @@ class PostureAndEyeDetector {
         )
         if (shoulderWidth <= 0f) return null
 
-        // 角度型嚴重度：atan2(肩寬, 耳朵-肩膀垂直距離)，越接近 90 度代表越低頭/駝背。
-        return Math.toDegrees(atan2(shoulderWidth.toDouble(), dy.toDouble()))
+        return (dy / shoulderWidth).toDouble()
     }
 
     fun detectWarnings(
@@ -99,8 +100,8 @@ class PostureAndEyeDetector {
         pose?.let {
             // 3. 偵測駝背 (檢查耳朵相對於肩膀的前傾角度)
             if (enableSlouchWarning) {
-                val angle = computeSlouchAngleDegrees(it)
-                if (angle != null && angle > slouchingAngleThresholdDegrees) {
+                val ratio = computePostureRatio(it)
+                if (ratio != null && ratio < slouchingPostureRatioThreshold) {
                     warnings.add(WarningState.SLOUCHING)
                 }
             }
