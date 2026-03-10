@@ -31,21 +31,16 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
+import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetector
-import com.google.mlkit.vision.face.Face
+import com.google.mlkit.vision.pose.PoseDetector
 import com.example.eyeprotect.R
 import dagger.hilt.android.AndroidEntryPoint
 import java.util.Locale
 import java.util.concurrent.Executors
 import javax.inject.Inject
+import com.google.android.gms.tasks.Tasks
 
-/**
- * An accessibility service to monitor user's posture and eye health.
- *
- * NOTE: This service requires the user to grant both Accessibility and Camera permissions.
- * It also needs to be declared in the AndroidManifest.xml and have a configuration file
- * in `res/xml`.
- */
 @AndroidEntryPoint
 @Suppress("LeakingThis")
 @ExperimentalGetImage
@@ -53,20 +48,23 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
 
     @Inject
     lateinit var faceDetector: FaceDetector
+    
+    @Inject
+    lateinit var poseDetector: PoseDetector
+    
     @Inject
     lateinit var tts: TextToSpeech
 
     private lateinit var windowManager: WindowManager
     private var overlayView: View? = null
 
-    private val postureDetector = PostureAndEyeDetector()
+    private val detector = PostureAndEyeDetector()
 
     private val cameraExecutor = Executors.newSingleThreadExecutor()
     private var lastDetectionTimestamp = 0L
     private var lastTtsTimestamp = 0L
     private var isTooCloseOverlayShown = false
 
-    // For managing the camera lifecycle within the service
     private lateinit var lifecycleRegistry: LifecycleRegistry
     override val lifecycle: Lifecycle
         get() = lifecycleRegistry
@@ -74,13 +72,17 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
     private val thresholdUpdateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.hasExtra("irisDistance")) {
-                postureDetector.irisDistanceThreshold = intent.getFloatExtra("irisDistance", postureDetector.irisDistanceThreshold)
+                detector.irisDistanceThreshold = intent.getFloatExtra("irisDistance", detector.irisDistanceThreshold)
+                detector.enableTooCloseWarning = true
             }
-            if (intent.hasExtra("slouchingAngle")) {
-                postureDetector.slouchingAngleThresholdDegrees = intent.getDoubleExtra("slouchingAngle", postureDetector.slouchingAngleThresholdDegrees)
+            if (intent.hasExtra("eyeOpenThreshold")) {
+                detector.eyeOpenThreshold = intent.getFloatExtra("eyeOpenThreshold", detector.eyeOpenThreshold)
+                detector.enableSquintWarning = true
             }
-            if (intent.hasExtra("ear")) {
-                postureDetector.earThreshold = intent.getFloatExtra("ear", postureDetector.earThreshold)
+            if (intent.hasExtra("slouchAngleThreshold")) {
+                detector.slouchingAngleThresholdDegrees =
+                    intent.getFloatExtra("slouchAngleThreshold", detector.slouchingAngleThresholdDegrees.toFloat()).toDouble()
+                detector.enableSlouchWarning = true
             }
         }
     }
@@ -89,6 +91,23 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
         super.onCreate()
         lifecycleRegistry = LifecycleRegistry(this)
         lifecycleRegistry.currentState = Lifecycle.State.CREATED
+        
+        // 載入儲存的門檻值 (未校正前不啟用提醒，避免誤報)
+        val prefs = getSharedPreferences("eyeprotect_prefs", Context.MODE_PRIVATE)
+        if (prefs.contains("iris_threshold")) {
+            detector.irisDistanceThreshold = prefs.getFloat("iris_threshold", detector.irisDistanceThreshold)
+            detector.enableTooCloseWarning = true
+        }
+        if (prefs.contains("eye_open_threshold")) {
+            detector.eyeOpenThreshold = prefs.getFloat("eye_open_threshold", detector.eyeOpenThreshold)
+            detector.enableSquintWarning = true
+        }
+        if (prefs.contains("slouch_angle_threshold")) {
+            detector.slouchingAngleThresholdDegrees =
+                prefs.getFloat("slouch_angle_threshold", detector.slouchingAngleThresholdDegrees.toFloat()).toDouble()
+            detector.enableSlouchWarning = true
+        }
+
         ContextCompat.registerReceiver(
             this,
             thresholdUpdateReceiver,
@@ -99,20 +118,8 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        Log.d(TAG, "Accessibility Service connected.")
-
         lifecycleRegistry.currentState = Lifecycle.State.STARTED
-
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-
-        if (!::faceDetector.isInitialized) {
-            Log.e(TAG, "FaceDetector dependency is not initialized; skipping camera startup.")
-            return
-        }
-        if (!::tts.isInitialized) {
-            Log.e(TAG, "TextToSpeech dependency is not initialized; skipping audio warnings.")
-        }
-
         startCamera()
         createNotificationChannel()
     }
@@ -123,28 +130,23 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
         cameraProviderFuture.addListener({
             try {
                 val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
-
                 val imageAnalyzer = ImageAnalysis.Builder()
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
                     .also {
                         it.setAnalyzer(cameraExecutor, this::analyzeImage)
                     }
-
                 val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
-
                 cameraProvider.unbindAll()
                 cameraProvider.bindToLifecycle(this, cameraSelector, imageAnalyzer)
-                Log.d(TAG, "Camera started successfully.")
             } catch (e: Exception) {
-                Log.e(TAG, "CameraX initialization/binding failed", e)
+                Log.e(TAG, "CameraX failed", e)
             }
         }, ContextCompat.getMainExecutor(this))
     }
 
     @ExperimentalGetImage
     private fun analyzeImage(imageProxy: ImageProxy) {
-        // Throttle analysis to once every 500ms
         val currentTimestamp = SystemClock.uptimeMillis()
         if (currentTimestamp - lastDetectionTimestamp < DETECTION_INTERVAL_MS) {
             imageProxy.close()
@@ -152,230 +154,139 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
         }
         lastDetectionTimestamp = currentTimestamp
 
-        val image = imageProxy.image
-        if (image == null) {
-            imageProxy.close()
-            return
-        }
+        val mediaImage = imageProxy.image ?: return
+        val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
 
-        try {
-            val inputImage = com.google.mlkit.vision.common.InputImage.fromMediaImage(image, imageProxy.imageInfo.rotationDegrees)
-            faceDetector.process(inputImage)
-                .addOnSuccessListener { faces ->
-                    val warnings = buildWarningsFromFaces(
-                        faces = faces,
-                        frameWidth = imageProxy.width,
-                        frameHeight = imageProxy.height
-                    )
-                    handleWarningState(warnings)
-                }
-                .addOnFailureListener {
-                    Log.e(TAG, "Face detection failed", it)
-                }
-                .addOnCompleteListener {
-                    imageProxy.close()
-                }
-        } catch (e: Exception) {
-            Log.e(TAG, "Face detection pipeline crashed", e)
-            imageProxy.close()
-        }
-    }
+        // 並行處理人臉與姿勢偵測
+        val faceTask = faceDetector.process(image)
+        val poseTask = poseDetector.process(image)
 
-    private fun buildWarningsFromFaces(
-        faces: List<Face>,
-        frameWidth: Int,
-        frameHeight: Int
-    ): Set<WarningState> {
-        if (faces.isEmpty()) return emptySet()
-
-        val primaryFace = faces.maxByOrNull { face ->
-            face.boundingBox.width() * face.boundingBox.height()
-        } ?: return emptySet()
-
-        val warnings = mutableSetOf<WarningState>()
-        val frameArea = frameWidth.toFloat() * frameHeight.toFloat()
-        if (frameArea > 0f) {
-            val faceArea = primaryFace.boundingBox.width().toFloat() * primaryFace.boundingBox.height().toFloat()
-            val faceAreaRatio = faceArea / frameArea
-            if (faceAreaRatio >= FACE_AREA_TOO_CLOSE_RATIO_THRESHOLD) {
-                warnings.add(WarningState.TOO_CLOSE)
+        Tasks.whenAllComplete(faceTask, poseTask)
+            .addOnSuccessListener {
+                val faces = faceTask.result
+                val pose = poseTask.result
+                
+                val warnings = detector.detectWarnings(
+                    face = faces?.firstOrNull(),
+                    pose = pose,
+                    imageWidth = if (imageProxy.imageInfo.rotationDegrees % 180 == 0) imageProxy.width else imageProxy.height,
+                    imageHeight = if (imageProxy.imageInfo.rotationDegrees % 180 == 0) imageProxy.height else imageProxy.width
+                )
+                
+                handleWarningState(warnings)
             }
-        }
-
-        val leftEyeOpenProbability = primaryFace.leftEyeOpenProbability
-        val rightEyeOpenProbability = primaryFace.rightEyeOpenProbability
-        if (leftEyeOpenProbability != null && rightEyeOpenProbability != null) {
-            val avgEyeOpenProbability = (leftEyeOpenProbability + rightEyeOpenProbability) / 2f
-            if (avgEyeOpenProbability <= EYE_OPEN_SQUINT_THRESHOLD) {
-                warnings.add(WarningState.SQUINTING)
+            .addOnCompleteListener {
+                imageProxy.close()
             }
-        }
-
-        return warnings
     }
 
     private fun handleWarningState(warnings: Set<WarningState>) {
-        // Handle "Too Close" warning
-        if (warnings.contains(WarningState.TOO_CLOSE)) {
-            if (!isTooCloseOverlayShown) {
-                showScreenOverlay()
-                isTooCloseOverlayShown = true
+        val mainExecutor = ContextCompat.getMainExecutor(this)
+        
+        mainExecutor.execute {
+            // 處理距離過近 (全螢幕遮罩)
+            if (warnings.contains(WarningState.TOO_CLOSE)) {
+                if (!isTooCloseOverlayShown) {
+                    showScreenOverlay()
+                    isTooCloseOverlayShown = true
+                    speakWarning("請保持距離", priority = true)
+                } else {
+                    speakWarning("請保持距離")
+                }
+            } else {
+                if (isTooCloseOverlayShown) {
+                    hideScreenOverlay()
+                    isTooCloseOverlayShown = false
+                }
             }
 
-            val currentTime = SystemClock.uptimeMillis()
-            if (currentTime - lastTtsTimestamp > VOICE_ALERT_COOLDOWN_MS) {
-                speakWarning("請保持距離")
+            // 處理瞇眼與駝背 (通知與語音)
+            val postureText = mutableListOf<String>()
+            if (warnings.contains(WarningState.SQUINTING)) postureText.add("不要瞇眼")
+            if (warnings.contains(WarningState.SLOUCHING)) postureText.add("請坐端正")
+
+            if (postureText.isNotEmpty()) {
+                val message = postureText.joinToString("，")
+                val didSpeak = speakWarning(message)
+                if (didSpeak) showWarningNotification(message)
+            }
+        }
+    }
+
+    private fun speakWarning(text: String, priority: Boolean = false): Boolean {
+        val currentTime = SystemClock.uptimeMillis()
+        if (priority || (currentTime - lastTtsTimestamp > VOICE_ALERT_COOLDOWN_MS)) {
+            if (!tts.isSpeaking) {
+                tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "warning")
                 lastTtsTimestamp = currentTime
-            }
-        } else {
-            if (isTooCloseOverlayShown) {
-                hideScreenOverlay()
-                isTooCloseOverlayShown = false
+                return true
             }
         }
-
-        val postureWarnings = mutableListOf<String>()
-        if (warnings.contains(WarningState.SLOUCHING)) {
-            postureWarnings.add("駝背")
-        }
-        if (warnings.contains(WarningState.SQUINTING)) {
-            postureWarnings.add("瞇眼")
-        }
-
-        if (postureWarnings.isNotEmpty()) {
-            showWarningNotification("姿勢提醒：${postureWarnings.joinToString(" 與 ")}")
-        }
+        return false
     }
 
     private fun showScreenOverlay() {
         if (overlayView != null) return
-
-        overlayView = View(this)
-        overlayView?.setBackgroundColor(Color.parseColor("#AA000000"))
-
+        overlayView = View(this).apply { setBackgroundColor(Color.parseColor("#CC000000")) }
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
-            } else {
-                WindowManager.LayoutParams.TYPE_PHONE
-            },
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
             PixelFormat.TRANSLUCENT
         )
-        params.gravity = Gravity.CENTER
-
-        try {
-            windowManager.addView(overlayView, params)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to add overlay view", e)
-        }
+        try { windowManager.addView(overlayView, params) } catch (e: Exception) { Log.e(TAG, "Overlay error", e) }
     }
 
     private fun hideScreenOverlay() {
-        if (overlayView == null) return
-        try {
-            windowManager.removeView(overlayView)
-            overlayView = null
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to remove overlay view", e)
-        }
-    }
-
-    private fun speakWarning(text: String) {
-        if (!::tts.isInitialized) return
-        if (tts.isSpeaking) return
-        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "")
+        overlayView?.let { try { windowManager.removeView(it) } catch (e: Exception) {} }
+        overlayView = null
     }
 
     @SuppressLint("NotificationPermission")
-    private fun showWarningNotification(warningText: String) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            Log.w(TAG, "Skipping notification: POST_NOTIFICATIONS permission not granted.")
-            return
-        }
-
+    private fun showWarningNotification(message: String) {
         val intent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
-
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_eye_health)
             .setContentTitle("護眼提醒")
-            .setContentText(warningText)
+            .setContentText(message)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .build()
-
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.notify(NOTIFICATION_ID, notification)
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(NOTIFICATION_ID, notification)
     }
 
     override fun onInit(status: Int) {
-        if (status == TextToSpeech.SUCCESS) {
-            val result = tts.setLanguage(Locale.CHINESE)
-            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                Log.e(TAG, "TTS language not supported.")
-                // 如果不支援中文，退而求其次嘗試使用系統預設
-                tts.setLanguage(Locale.getDefault())
-            }
-        } else {
-            Log.e(TAG, "TTS initialization failed.")
-        }
+        if (status == TextToSpeech.SUCCESS) tts.language = Locale.CHINESE
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // Not used for this implementation
-    }
-
-    override fun onInterrupt() {
-        // Service interrupted
-        lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
-    }
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    override fun onInterrupt() {}
 
     override fun onDestroy() {
         super.onDestroy()
         unregisterReceiver(thresholdUpdateReceiver)
-        lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
         cameraExecutor.shutdown()
-        if (::faceDetector.isInitialized) {
-            faceDetector.close()
-        }
-        if (::tts.isInitialized) {
-            tts.stop()
-            tts.shutdown()
-        }
+        tts.shutdown()
         hideScreenOverlay()
-        Log.d(TAG, "Accessibility Service destroyed.")
     }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "Eye Health Warnings"
-            val descriptionText = "Notifications for posture and eye strain"
-            val importance = NotificationManager.IMPORTANCE_HIGH
-            val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
-                description = descriptionText
-            }
-            val notificationManager: NotificationManager =
-                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(channel)
+            val channel = NotificationChannel(CHANNEL_ID, "Eye Health Warnings", NotificationManager.IMPORTANCE_HIGH)
+            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)
         }
     }
 
     companion object {
         const val ACTION_UPDATE_THRESHOLDS = "com.example.eyeprotect.UPDATE_THRESHOLDS"
-        const val ACTION_WARNING = "com.example.eyeprotect.WARNING"
         private const val TAG = "EyeHealthService"
-        private const val CHANNEL_ID = "EyeHealthWarningChannel"
+        private const val CHANNEL_ID = "WarningChannel"
         private const val NOTIFICATION_ID = 1
-        private const val DETECTION_INTERVAL_MS = 500L
-        private const val VOICE_ALERT_COOLDOWN_MS = 10000L
-        private const val FACE_AREA_TOO_CLOSE_RATIO_THRESHOLD = 0.27f
-        private const val EYE_OPEN_SQUINT_THRESHOLD = 0.35f
+        private const val DETECTION_INTERVAL_MS = 1000L
+        private const val VOICE_ALERT_COOLDOWN_MS = 15000L
     }
 }

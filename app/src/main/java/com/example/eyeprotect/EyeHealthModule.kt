@@ -4,6 +4,9 @@ import android.content.Context
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetector
 import com.google.mlkit.vision.face.FaceDetectorOptions
+import com.google.mlkit.vision.pose.PoseDetection
+import com.google.mlkit.vision.pose.PoseDetector
+import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -27,6 +30,17 @@ object EyeHealthModule {
     @Provides
     fun provideFaceDetector(options: FaceDetectorOptions): FaceDetector =
         FaceDetection.getClient(options)
+
+    @Provides
+    @Singleton
+    fun providePoseDetectorOptions(): PoseDetectorOptions =
+        PoseDetectorOptions.Builder()
+            .setDetectorMode(PoseDetectorOptions.STREAM_MODE)
+            .build()
+
+    @Provides
+    fun providePoseDetector(options: PoseDetectorOptions): PoseDetector =
+        PoseDetection.getClient(options)
 
     @Provides
     fun provideTextToSpeech(@ApplicationContext context: Context): android.speech.tts.TextToSpeech =
