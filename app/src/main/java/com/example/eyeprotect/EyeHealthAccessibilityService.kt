@@ -224,7 +224,7 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
 
             val currentTime = SystemClock.uptimeMillis()
             if (currentTime - lastTtsTimestamp > VOICE_ALERT_COOLDOWN_MS) {
-                speakWarning("Please keep your distance")
+                speakWarning("請保持距離")
                 lastTtsTimestamp = currentTime
             }
         } else {
@@ -236,14 +236,14 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
 
         val postureWarnings = mutableListOf<String>()
         if (warnings.contains(WarningState.SLOUCHING)) {
-            postureWarnings.add("slouching")
+            postureWarnings.add("駝背")
         }
         if (warnings.contains(WarningState.SQUINTING)) {
-            postureWarnings.add("squinting")
+            postureWarnings.add("瞇眼")
         }
 
         if (postureWarnings.isNotEmpty()) {
-            showWarningNotification("Posture alert: ${postureWarnings.joinToString(" and ")}")
+            showWarningNotification("姿勢提醒：${postureWarnings.joinToString(" 與 ")}")
         }
     }
 
@@ -303,7 +303,7 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle("Eye Health Warning")
+            .setContentTitle("護眼提醒")
             .setContentText(warningText)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
@@ -317,9 +317,11 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
 
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
-            val result = tts.setLanguage(Locale.US)
+            val result = tts.setLanguage(Locale.CHINESE)
             if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
                 Log.e(TAG, "TTS language not supported.")
+                // 如果不支援中文，退而求其次嘗試使用系統預設
+                tts.setLanguage(Locale.getDefault())
             }
         } else {
             Log.e(TAG, "TTS initialization failed.")
