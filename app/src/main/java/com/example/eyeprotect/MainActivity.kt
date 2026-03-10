@@ -22,6 +22,7 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -30,10 +31,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
@@ -56,12 +61,17 @@ import kotlinx.coroutines.delay
 import javax.inject.Inject
 import com.google.android.gms.tasks.Tasks
 import java.util.Locale
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 enum class AppStage {
     PERMISSION,
     CALIBRATION,
     DASHBOARD
 }
+
+private const val HISTORY_MAX_POINTS = 120
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -421,6 +431,12 @@ fun DashboardScreen(
     val eyeOpenThreshold = prefs.getFloat("eye_open_threshold", Float.NaN)
     val slouchThreshold = prefs.getFloat("slouch_angle_threshold", Float.NaN)
 
+    val distanceHistory = remember { mutableStateListOf<Float>() }
+    val eyeOpenHistory = remember { mutableStateListOf<Float>() }
+    val postureHistory = remember { mutableStateListOf<Float>() }
+    val lyingHistory = remember { mutableStateListOf<Float>() }
+    var selectedHistoryMetric by remember { mutableStateOf(HistoryMetric.DISTANCE) }
+
     DisposableEffect(context) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context, intent: Intent) {
@@ -456,6 +472,22 @@ fun DashboardScreen(
                 if (intent.hasExtra(EyeHealthAccessibilityService.EXTRA_LIVE_TILT_DEG)) {
                     tiltDeg = intent.getFloatExtra(EyeHealthAccessibilityService.EXTRA_LIVE_TILT_DEG, tiltDeg)
                 }
+
+                // Only camera frames include the continuous series we care about.
+                if (!isSensorOnly) {
+                    pushHistory(distanceHistory, distancePercent(irisNorm, irisThreshold)?.toFloat() ?: Float.NaN)
+                    pushHistory(eyeOpenHistory, probabilityPercent(eyeOpenMin)?.toFloat() ?: Float.NaN)
+                    pushHistory(postureHistory, ratioPercent(slouchScore, slouchThreshold)?.toFloat() ?: Float.NaN)
+                    pushHistory(lyingHistory, horizontalPercentFromTilt(tiltDeg)?.toFloat() ?: Float.NaN)
+                }
+
+                // When monitoring is paused, service publishes NaNs and clears warnings.
+                if (!monitoringEnabled && incomingMask == 0) {
+                    distanceHistory.clear()
+                    eyeOpenHistory.clear()
+                    postureHistory.clear()
+                    lyingHistory.clear()
+                }
             }
         }
 
@@ -474,315 +506,523 @@ fun DashboardScreen(
         if (isGranted) onRequestPermission?.invoke()
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(24.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        GradientBorderContainer(
-            modifier = Modifier.size(120.dp)
+    Box(modifier = modifier.fillMaxSize()) {
+        GridBackdrop(modifier = Modifier.matchParentSize())
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 18.dp, vertical = 16.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Icon(
-                painter = painterResource(id = R.drawable.ic_eye_health),
-                contentDescription = null,
-                modifier = Modifier.size(64.dp),
-                tint = Color.Unspecified
+            DashboardHeader(
+                monitoringEnabled = monitoringEnabled,
+                onToggleMonitoring = { enabled ->
+                    monitoringEnabled = enabled
+                    prefs.edit().putBoolean(EyeHealthAccessibilityService.PREF_MONITORING_ENABLED, enabled).apply()
+                    val intent = Intent(EyeHealthAccessibilityService.ACTION_SET_MONITORING).apply {
+                        setPackage(context.packageName)
+                        putExtra(EyeHealthAccessibilityService.EXTRA_MONITORING_ENABLED, enabled)
+                    }
+                    context.sendBroadcast(intent)
+                }
             )
-        }
 
-        EyeHealthCard(isServiceEnabled = isServiceEnabled, hasCameraPermission = hasCameraPermission)
-
-        MonitoringToggleCard(
-            enabled = monitoringEnabled,
-            onToggle = { enabled ->
-                monitoringEnabled = enabled
-                prefs.edit().putBoolean(EyeHealthAccessibilityService.PREF_MONITORING_ENABLED, enabled).apply()
-                val intent = Intent(EyeHealthAccessibilityService.ACTION_SET_MONITORING).apply {
-                    setPackage(context.packageName)
-                    putExtra(EyeHealthAccessibilityService.EXTRA_MONITORING_ENABLED, enabled)
-                }
-                context.sendBroadcast(intent)
-            }
-        )
-
-        LiveMetricsCard(
-            isServiceEnabled = isServiceEnabled,
-            hasCameraPermission = hasCameraPermission,
-            liveTs = liveTs,
-            irisNorm = irisNorm,
-            eyeOpenMin = eyeOpenMin,
-            slouchScore = slouchScore,
-            pitchDeg = pitchDeg,
-            rollDeg = rollDeg,
-            tiltDeg = tiltDeg,
-            warningsMask = warningsMask,
-            irisThreshold = irisThreshold,
-            eyeOpenThreshold = eyeOpenThreshold,
-            slouchThreshold = slouchThreshold
-        )
-
-        if (!hasCameraPermission) {
-            Button(
-                onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.secondary,
-                    contentColor = Color.Black
-                ),
-                shape = RoundedCornerShape(24.dp),
-                elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_enable),
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.size(8.dp))
-                    Text(
-                        text = "授權相機權限",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        } else if (hasCalibrated) {
-            Button(
-                onClick = {
+            SetupCard(
+                hasCameraPermission = hasCameraPermission,
+                hasCalibrated = hasCalibrated,
+                isServiceEnabled = isServiceEnabled,
+                onRequestCamera = { permissionLauncher.launch(Manifest.permission.CAMERA) },
+                onOpenAccessibilitySettings = {
                     val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                     context.startActivity(intent)
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isServiceEnabled) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondary,
-                    contentColor = if (isServiceEnabled) MaterialTheme.colorScheme.onPrimaryContainer else Color.Black
-                ),
-                shape = RoundedCornerShape(24.dp),
-                elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_enable),
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.size(8.dp))
-                    Text(
-                        text = if (isServiceEnabled) "服務運作中" else stringResource(id = R.string.enable_service_button),
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                onReCalibrate = onReCalibrate
+            )
+
+            MetricGrid(
+                irisNorm = irisNorm,
+                eyeOpenMin = eyeOpenMin,
+                postureRatio = slouchScore,
+                tiltDeg = tiltDeg,
+                pitchDeg = pitchDeg,
+                rollDeg = rollDeg,
+                warningsMask = warningsMask,
+                irisThreshold = irisThreshold,
+                eyeOpenThreshold = eyeOpenThreshold,
+                postureThreshold = slouchThreshold,
+                distanceTrend = distanceHistory,
+                eyeTrend = eyeOpenHistory,
+                postureTrend = postureHistory,
+                lyingTrend = lyingHistory
+            )
+
+            HistoryChartCard(
+                selected = selectedHistoryMetric,
+                onSelect = { selectedHistoryMetric = it },
+                distanceTrend = distanceHistory,
+                eyeTrend = eyeOpenHistory,
+                postureTrend = postureHistory,
+                lyingTrend = lyingHistory
+            )
+        }
+    }
+}
+
+private enum class HistoryMetric(val label: String) {
+    DISTANCE("距離"),
+    EYE_OPEN("咪眼"),
+    POSTURE("姿勢"),
+    LYING("躺姿")
+}
+
+private fun pushHistory(target: MutableList<Float>, value: Float) {
+    target.add(value)
+    if (target.size > HISTORY_MAX_POINTS) target.removeAt(0)
+}
+
+@Composable
+private fun GridBackdrop(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val bg = Brush.linearGradient(
+            colors = listOf(
+                Color(0xFF061A1B),
+                Color(0xFF071626),
+                Color(0xFF05121E)
+            )
+        )
+        drawRect(brush = bg)
+
+        // Soft highlight blob.
+        drawRect(
+            brush = Brush.radialGradient(
+                colors = listOf(Color(0x3347F1B5), Color.Transparent),
+                center = Offset(size.width * 0.78f, size.height * 0.18f),
+                radius = size.minDimension * 0.55f
+            )
+        )
+
+        // Grid.
+        val spacing = 34.dp.toPx()
+        val lineColor = Color.White.copy(alpha = 0.05f)
+        var x = 0f
+        while (x <= size.width) {
+            drawLine(lineColor, start = Offset(x, 0f), end = Offset(x, size.height), strokeWidth = 1f)
+            x += spacing
+        }
+        var y = 0f
+        while (y <= size.height) {
+            drawLine(lineColor, start = Offset(0f, y), end = Offset(size.width, y), strokeWidth = 1f)
+            y += spacing
+        }
+    }
+}
+
+@Composable
+private fun DashboardHeader(
+    monitoringEnabled: Boolean,
+    onToggleMonitoring: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 2.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column {
+            Text(
+                text = "Eye Diary",
+                fontSize = 30.sp,
+                fontWeight = FontWeight.Black,
+                color = Color.White
+            )
+            Text(
+                text = "護眼監測與趨勢",
+                fontSize = 14.sp,
+                color = Color.White.copy(alpha = 0.72f)
+            )
+        }
+
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                text = if (monitoringEnabled) "監測中" else "已暫停",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (monitoringEnabled) Color(0xFF47F1B5) else Color.White.copy(alpha = 0.75f)
+            )
+            Switch(
+                checked = monitoringEnabled,
+                onCheckedChange = onToggleMonitoring
+            )
+        }
+    }
+}
+
+@Composable
+private fun SetupCard(
+    hasCameraPermission: Boolean,
+    hasCalibrated: Boolean,
+    isServiceEnabled: Boolean,
+    onRequestCamera: () -> Unit,
+    onOpenAccessibilitySettings: () -> Unit,
+    onReCalibrate: (() -> Unit)?
+) {
+    val title: String
+    val subtitle: String
+    val primaryLabel: String?
+    val primaryAction: (() -> Unit)?
+
+    when {
+        !hasCameraPermission -> {
+            title = "需要相機權限"
+            subtitle = "我們用前鏡頭計算距離、咪眼與姿勢，指標才會開始更新。"
+            primaryLabel = "授權相機"
+            primaryAction = onRequestCamera
+        }
+        !hasCalibrated -> {
+            title = "請先完成校正"
+            subtitle = "校正後才會啟用提醒與門檻值。"
+            primaryLabel = null
+            primaryAction = null
+        }
+        !isServiceEnabled -> {
+            title = "開啟無障礙服務"
+            subtitle = "開啟後才能在背景提醒你太近、咪眼、駝背或躺著滑。"
+            primaryLabel = "前往設定"
+            primaryAction = onOpenAccessibilitySettings
+        }
+        else -> {
+            title = "一切就緒"
+            subtitle = "指標會持續更新；提醒會以語音與震動發出。"
+            primaryLabel = null
+            primaryAction = null
+        }
+    }
+
+    GlassCard {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = title,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color.White
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = subtitle,
+                fontSize = 13.sp,
+                color = Color.White.copy(alpha = 0.72f),
+                lineHeight = 18.sp
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (primaryLabel != null && primaryAction != null) {
+                    PrimaryPillButton(text = primaryLabel, onClick = primaryAction)
+                }
+                if (hasCameraPermission && onReCalibrate != null) {
+                    SecondaryPillButton(text = "重新校正", onClick = onReCalibrate)
                 }
             }
         }
-
-        if (hasCameraPermission && onReCalibrate != null) {
-            OutlinedButton(
-                onClick = onReCalibrate,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                shape = RoundedCornerShape(24.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-            ) {
-                Text(
-                    text = "重新校正",
-                    fontSize = 16.sp,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-        }
     }
 }
 
 @Composable
-private fun MonitoringToggleCard(
-    enabled: Boolean,
-    onToggle: (Boolean) -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column {
-                Text(
-                    text = if (enabled) "監測中" else "已暫停監測",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.ExtraBold
-                )
-                Text(
-                    text = if (enabled) "會更新指標並提醒" else "不更新指標，也不提醒",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
-                )
-            }
-            Switch(checked = enabled, onCheckedChange = onToggle)
-        }
-    }
-}
-
-@Composable
-private fun LiveMetricsCard(
-    isServiceEnabled: Boolean,
-    hasCameraPermission: Boolean,
-    liveTs: Long,
+private fun MetricGrid(
     irisNorm: Float,
     eyeOpenMin: Float,
-    slouchScore: Float,
+    postureRatio: Float,
+    tiltDeg: Float,
     pitchDeg: Float,
     rollDeg: Float,
-    tiltDeg: Float,
     warningsMask: Int,
     irisThreshold: Float,
     eyeOpenThreshold: Float,
-    slouchThreshold: Float
+    postureThreshold: Float,
+    distanceTrend: List<Float>,
+    eyeTrend: List<Float>,
+    postureTrend: List<Float>,
+    lyingTrend: List<Float>
 ) {
-    val hasLive = liveTs > 0L
     val tooClose = warningsMask and 1 != 0
     val squinting = warningsMask and 2 != 0
     val slouching = warningsMask and 4 != 0
     val lying = warningsMask and 8 != 0
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-    ) {
-        Column(modifier = Modifier.padding(20.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            MetricTile(
+                modifier = Modifier.weight(1f),
+                title = "距離",
+                value = formatPercent(distancePercent(irisNorm, irisThreshold)),
+                unit = "100% = 太近門檻",
+                hint = if (irisThreshold.isNaN()) "尚未校正門檻" else "越大越近",
+                warning = tooClose,
+                accent = Color(0xFF47F1B5),
+                trend = distanceTrend
+            )
+            MetricTile(
+                modifier = Modifier.weight(1f),
+                title = "睜眼",
+                value = formatPercent(probabilityPercent(eyeOpenMin)),
+                unit = "越低越咪眼",
+                hint = if (eyeOpenThreshold.isNaN()) null else "門檻 ${formatPercent(probabilityPercent(eyeOpenThreshold))}",
+                warning = squinting,
+                accent = Color(0xFF6EE7FF),
+                trend = eyeTrend
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            MetricTile(
+                modifier = Modifier.weight(1f),
+                title = "姿勢",
+                value = formatPercent(ratioPercent(postureRatio, postureThreshold)),
+                unit = "100% = 警戒線",
+                hint = "越低越駝背/低頭",
+                warning = slouching,
+                accent = Color(0xFFA7F36B),
+                trend = postureTrend
+            )
+            MetricTile(
+                modifier = Modifier.weight(1f),
+                title = "躺姿",
+                value = formatPercent(horizontalPercentFromTilt(tiltDeg)),
+                unit = "水平度",
+                hint = "tilt ${formatDeg(tiltDeg)}° (越接近 0/180 越平)",
+                warning = lying,
+                accent = Color(0xFFFFD166),
+                trend = lyingTrend
+            )
+        }
+    }
+}
+
+@Composable
+private fun MetricTile(
+    modifier: Modifier = Modifier,
+    title: String,
+    value: String,
+    unit: String,
+    hint: String?,
+    warning: Boolean,
+    accent: Color,
+    trend: List<Float>
+) {
+    GlassCard(modifier = modifier) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = title,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White.copy(alpha = 0.78f)
+                )
+                StatusDot(active = warning, accent = accent)
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "即時指標",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.ExtraBold,
-                fontSize = 20.sp
+                text = value,
+                fontSize = 30.sp,
+                fontWeight = FontWeight.Black,
+                color = if (warning) Color(0xFFFF5C6C) else Color.White
             )
-            Spacer(modifier = Modifier.height(8.dp))
-
-            if (!hasCameraPermission) {
-                Text(
-                    text = "尚未授權相機，無法取得即時數據。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-                )
-                return@Column
-            }
-            if (!isServiceEnabled) {
-                Text(
-                    text = "尚未開啟無障礙服務，背景偵測不會更新數據。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-                )
-                return@Column
-            }
-            if (!hasLive) {
-                Text(
-                    text = "等待偵測資料中。請回到主畫面停留幾秒，並確保臉部入鏡。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-                )
-                return@Column
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            MetricsRow(
-                label = "距離(瞳距/寬)",
-                value = formatFloat(irisNorm),
-                threshold = if (irisThreshold.isNaN()) null else formatFloat(irisThreshold),
-                warning = tooClose
-            )
-            MetricsRow(
-                label = "咪眼(最小睜眼)",
-                value = formatFloat(eyeOpenMin),
-                threshold = if (eyeOpenThreshold.isNaN()) null else formatFloat(eyeOpenThreshold),
-                warning = squinting
-            )
-            MetricsRow(
-                label = "姿勢(耳肩/肩寬)",
-                value = formatFloat(slouchScore),
-                threshold = if (slouchThreshold.isNaN()) null else formatFloat(slouchThreshold),
-                warning = slouching
-            )
-            MetricsRow(
-                label = "躺姿(tilt/pitch/roll)",
-                value = "${formatDeg(tiltDeg)} / ${formatDeg(pitchDeg)} / ${formatDeg(rollDeg)}",
-                threshold = null,
-                warning = lying
+            Text(
+                text = unit,
+                fontSize = 12.sp,
+                color = Color.White.copy(alpha = 0.62f)
             )
 
             Spacer(modifier = Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatusChip("太近", tooClose)
-                StatusChip("咪眼", squinting)
-                StatusChip("駝背", slouching)
-                StatusChip("躺著", lying)
+            Sparkline(
+                values = trend,
+                color = if (warning) Color(0xFFFF5C6C) else accent,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+            )
+
+            if (hint != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = hint,
+                    fontSize = 12.sp,
+                    color = Color.White.copy(alpha = 0.62f)
+                )
             }
         }
     }
 }
 
 @Composable
-private fun MetricsRow(label: String, value: String, threshold: String?, warning: Boolean) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            fontSize = 14.sp,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
-        )
-        val right = buildString {
-            append(value)
-            if (threshold != null) append(" / ").append(threshold)
-        }
-        Text(
-            text = right,
-            style = MaterialTheme.typography.bodyMedium,
-            fontSize = 20.sp,
-            fontWeight = if (warning) FontWeight.ExtraBold else FontWeight.Medium,
-            color = if (warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
-        )
+private fun HistoryChartCard(
+    selected: HistoryMetric,
+    onSelect: (HistoryMetric) -> Unit,
+    distanceTrend: List<Float>,
+    eyeTrend: List<Float>,
+    postureTrend: List<Float>,
+    lyingTrend: List<Float>
+) {
+    val (values, accent) = when (selected) {
+        HistoryMetric.DISTANCE -> distanceTrend to Color(0xFF47F1B5)
+        HistoryMetric.EYE_OPEN -> eyeTrend to Color(0xFF6EE7FF)
+        HistoryMetric.POSTURE -> postureTrend to Color(0xFFA7F36B)
+        HistoryMetric.LYING -> lyingTrend to Color(0xFFFFD166)
     }
-    Spacer(modifier = Modifier.height(10.dp))
+
+    GlassCard {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "歷史圖表",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White
+                )
+                Text(
+                    text = "最近 ${min(values.size, HISTORY_MAX_POINTS)} 點",
+                    fontSize = 12.sp,
+                    color = Color.White.copy(alpha = 0.6f)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                HistoryMetric.values().forEach { metric ->
+                    FilterChip(
+                        selected = selected == metric,
+                        onClick = { onSelect(metric) },
+                        label = { Text(metric.label) }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            Sparkline(
+                values = values,
+                color = accent,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(140.dp)
+                    .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(16.dp))
+                    .padding(10.dp)
+            )
+        }
+    }
 }
 
 @Composable
-private fun StatusChip(text: String, active: Boolean) {
-    val container = if (active) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant
-    val content = if (active) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant
-    Surface(color = container, shape = RoundedCornerShape(999.dp)) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
-            color = content
+private fun Sparkline(values: List<Float>, color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        if (values.size < 2) return@Canvas
+
+        var minV = Float.POSITIVE_INFINITY
+        var maxV = Float.NEGATIVE_INFINITY
+        for (v in values) {
+            if (v.isNaN()) continue
+            minV = min(minV, v)
+            maxV = max(maxV, v)
+        }
+        if (!minV.isFinite() || !maxV.isFinite()) return@Canvas
+        if (minV == maxV) {
+            minV -= 1f
+            maxV += 1f
+        }
+
+        val path = Path()
+        val dx = if (values.size <= 1) size.width else size.width / (values.size - 1).toFloat()
+        var started = false
+        for ((index, v) in values.withIndex()) {
+            if (v.isNaN()) {
+                started = false
+                continue
+            }
+            val t = (v - minV) / (maxV - minV)
+            val x = dx * index
+            val y = size.height - (t * size.height)
+            if (!started) {
+                path.moveTo(x, y)
+                started = true
+            } else {
+                path.lineTo(x, y)
+            }
+        }
+
+        // Subtle baseline.
+        drawLine(
+            color = Color.White.copy(alpha = 0.06f),
+            start = Offset(0f, size.height),
+            end = Offset(size.width, size.height),
+            strokeWidth = 1f
         )
+
+        drawPath(
+            path = path,
+            color = color,
+            style = Stroke(width = 3.5f, cap = StrokeCap.Round)
+        )
+    }
+}
+
+@Composable
+private fun GlassCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.06f)),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+    ) {
+        Column(modifier = Modifier.padding(16.dp), content = content)
+    }
+}
+
+@Composable
+private fun StatusDot(active: Boolean, accent: Color) {
+    val dotColor = if (active) Color(0xFFFF5C6C) else accent.copy(alpha = 0.7f)
+    Box(
+        modifier = Modifier
+            .size(10.dp)
+            .clip(CircleShape)
+            .background(dotColor)
+    )
+}
+
+@Composable
+private fun PrimaryPillButton(text: String, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        shape = RoundedCornerShape(999.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFF47F1B5),
+            contentColor = Color(0xFF06201A)
+        ),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+    ) {
+        Text(text = text, fontWeight = FontWeight.Black)
+    }
+}
+
+@Composable
+private fun SecondaryPillButton(text: String, onClick: () -> Unit) {
+    OutlinedButton(
+        onClick = onClick,
+        shape = RoundedCornerShape(999.dp),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+    ) {
+        Text(text = text, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -794,6 +1034,35 @@ private fun formatFloat(value: Float): String {
 private fun formatDeg(value: Float): String {
     if (value.isNaN()) return "--"
     return value.toInt().toString()
+}
+
+private fun probabilityPercent(probability: Float): Int? {
+    if (probability.isNaN()) return null
+    return (probability.coerceIn(0f, 1f) * 100f).roundToInt()
+}
+
+private fun distancePercent(irisNorm: Float, threshold: Float): Int? {
+    if (irisNorm.isNaN() || threshold.isNaN() || threshold <= 0f) return null
+    val ratio = (irisNorm / threshold).coerceIn(0f, 2.5f)
+    return (ratio * 100f).roundToInt()
+}
+
+private fun ratioPercent(value: Float, threshold: Float): Int? {
+    if (value.isNaN() || threshold.isNaN() || threshold <= 0f) return null
+    val ratio = (value / threshold).coerceIn(0f, 2.5f)
+    return (ratio * 100f).roundToInt()
+}
+
+private fun horizontalPercentFromTilt(tiltDeg: Float): Int? {
+    if (tiltDeg.isNaN()) return null
+    val t = tiltDeg.coerceIn(0f, 180f)
+    val fromHorizontal = min(t, 180f - t) // 0..90
+    val percent = (1f - (fromHorizontal / 90f)).coerceIn(0f, 1f)
+    return (percent * 100f).roundToInt()
+}
+
+private fun formatPercent(value: Int?): String {
+    return value?.toString()?.plus("%") ?: "--"
 }
 
 @Composable
