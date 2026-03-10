@@ -18,6 +18,11 @@ import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.os.PowerManager
 import android.speech.tts.TextToSpeech
 import android.speech.tts.Voice
 import android.util.Log
@@ -66,12 +71,52 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
     private val detector = PostureAndEyeDetector()
 
     private val cameraExecutor = Executors.newSingleThreadExecutor()
+    private var cameraProvider: ProcessCameraProvider? = null
+    private var imageAnalyzer: ImageAnalysis? = null
     private var lastDetectionTimestamp = 0L
     private var lastTtsTimestamp = 0L
     private var lastVibrationTimestamp = 0L
     private var isTooCloseOverlayShown = false
     private var cachedChineseVoices: List<Voice> = emptyList()
     private var lastVoiceRefreshTimestamp = 0L
+    private var lastGyroMagnitude = 0.0
+
+    private var lastPitchDegrees = Double.NaN
+    private var lastRollDegrees = Double.NaN
+    private var lastTiltDegrees = Double.NaN
+    private var lastTiltFromHorizontalDegrees = Double.NaN
+    private var lyingCandidateStartTimestamp = 0L
+    private var isLyingActive = false
+    private var lastSensorPublishTimestamp = 0L
+    private var lastLyingAlertTimestamp = 0L
+    private var lastFaceSeenTimestamp = 0L
+    private var isMonitoringEnabled = true
+
+    private lateinit var sensorManager: SensorManager
+    private var rotationVectorSensor: Sensor? = null
+    private var gyroSensor: Sensor? = null
+    private var gravitySensor: Sensor? = null
+
+    private val sensorListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent) {
+            when (event.sensor.type) {
+                Sensor.TYPE_GYROSCOPE -> {
+                    val wx = event.values.getOrNull(0)?.toDouble() ?: 0.0
+                    val wy = event.values.getOrNull(1)?.toDouble() ?: 0.0
+                    val wz = event.values.getOrNull(2)?.toDouble() ?: 0.0
+                    lastGyroMagnitude = kotlin.math.sqrt(wx * wx + wy * wy + wz * wz)
+                }
+                Sensor.TYPE_ROTATION_VECTOR -> {
+                    updateOrientationFromRotationVector(event.values)
+                }
+                Sensor.TYPE_GRAVITY -> {
+                    updateTiltFromGravity(event.values)
+                }
+            }
+        }
+
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+    }
 
     private lateinit var lifecycleRegistry: LifecycleRegistry
     override val lifecycle: Lifecycle
@@ -95,6 +140,16 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
         }
     }
 
+    private val monitoringToggleReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action != ACTION_SET_MONITORING) return
+            val enabled = intent.getBooleanExtra(EXTRA_MONITORING_ENABLED, true)
+            val prefs = getSharedPreferences("eyeprotect_prefs", Context.MODE_PRIVATE)
+            prefs.edit().putBoolean(PREF_MONITORING_ENABLED, enabled).apply()
+            applyMonitoringState(enabled)
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         lifecycleRegistry = LifecycleRegistry(this)
@@ -102,6 +157,7 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
         
         // 載入儲存的門檻值 (未校正前不啟用提醒，避免誤報)
         val prefs = getSharedPreferences("eyeprotect_prefs", Context.MODE_PRIVATE)
+        isMonitoringEnabled = prefs.getBoolean(PREF_MONITORING_ENABLED, true)
         if (prefs.contains("iris_threshold")) {
             detector.irisDistanceThreshold = prefs.getFloat("iris_threshold", detector.irisDistanceThreshold)
             detector.enableTooCloseWarning = true
@@ -122,41 +178,247 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
             IntentFilter(ACTION_UPDATE_THRESHOLDS),
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
+
+        ContextCompat.registerReceiver(
+            this,
+            monitoringToggleReceiver,
+            IntentFilter(ACTION_SET_MONITORING),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
     }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         lifecycleRegistry.currentState = Lifecycle.State.STARTED
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        startCamera()
         createNotificationChannel()
         // Best-effort; init callback isn't guaranteed with current DI wiring.
         tts.language = Locale.TRADITIONAL_CHINESE
+        applyMonitoringState(isMonitoringEnabled)
+    }
+
+    private fun applyMonitoringState(enabled: Boolean) {
+        isMonitoringEnabled = enabled
+        if (enabled) {
+            startSensors()
+            startCamera()
+        } else {
+            stopCamera()
+            stopSensors()
+            ContextCompat.getMainExecutor(this).execute {
+                hideScreenOverlay()
+                isTooCloseOverlayShown = false
+            }
+            isLyingActive = false
+            lyingCandidateStartTimestamp = 0L
+            lastDetectionTimestamp = 0L
+            publishMonitoringPaused()
+        }
+    }
+
+    private fun publishMonitoringPaused() {
+        val now = SystemClock.uptimeMillis()
+        val prefs = getSharedPreferences("eyeprotect_prefs", Context.MODE_PRIVATE)
+        prefs.edit()
+            .putLong(PREF_LIVE_TS, now)
+            .putInt(PREF_LIVE_WARNINGS_MASK, 0)
+            .putFloat(PREF_LIVE_IRIS_NORM, Float.NaN)
+            .putFloat(PREF_LIVE_EYE_OPEN_MIN, Float.NaN)
+            .putFloat(PREF_LIVE_SLOUCH_SCORE, Float.NaN)
+            .apply()
+
+        val intent = Intent(ACTION_LIVE_METRICS).apply {
+            setPackage(packageName)
+            putExtra(EXTRA_LIVE_TS, now)
+            putExtra(EXTRA_LIVE_WARNINGS_MASK, 0)
+            putExtra(EXTRA_LIVE_IRIS_NORM, Float.NaN)
+            putExtra(EXTRA_LIVE_EYE_OPEN_MIN, Float.NaN)
+            putExtra(EXTRA_LIVE_SLOUCH_SCORE, Float.NaN)
+        }
+        sendBroadcast(intent)
+    }
+
+    private fun startSensors() {
+        if (!isMonitoringEnabled) return
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        rotationVectorSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+        gyroSensor = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
+        gravitySensor = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY)
+
+        rotationVectorSensor?.let {
+            sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_GAME)
+        }
+        gyroSensor?.let {
+            sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_GAME)
+        }
+        gravitySensor?.let {
+            sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_GAME)
+        }
+    }
+
+    private fun stopSensors() {
+        try {
+            sensorManager.unregisterListener(sensorListener)
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun updateOrientationFromRotationVector(values: FloatArray) {
+        // Derive pitch/roll from rotation vector. This relies on sensor fusion (uses gyro internally).
+        val rotationMatrix = FloatArray(9)
+        val orientation = FloatArray(3)
+        SensorManager.getRotationMatrixFromVector(rotationMatrix, values)
+        SensorManager.getOrientation(rotationMatrix, orientation)
+
+        val pitchRad = orientation[1].toDouble()
+        val rollRad = orientation[2].toDouble()
+        lastPitchDegrees = kotlin.math.abs(Math.toDegrees(pitchRad))
+        lastRollDegrees = kotlin.math.abs(Math.toDegrees(rollRad))
+
+        updateLyingState()
+        publishSensorMetricsIfNeeded()
+    }
+
+    private fun updateTiltFromGravity(values: FloatArray) {
+        val gx = values.getOrNull(0)?.toDouble() ?: return
+        val gy = values.getOrNull(1)?.toDouble() ?: return
+        val gz = values.getOrNull(2)?.toDouble() ?: return
+        val g = kotlin.math.sqrt(gx * gx + gy * gy + gz * gz)
+        if (g <= 0.0) return
+
+        // Tilt angle between device Z axis (screen normal) and gravity vector.
+        // Range is 0..180 (0 ~= flat one side, 180 ~= flat the other side, 90 ~= upright).
+        val cos = (gz / g).coerceIn(-1.0, 1.0)
+        lastTiltDegrees = Math.toDegrees(kotlin.math.acos(cos))
+        lastTiltFromHorizontalDegrees = kotlin.math.min(lastTiltDegrees, 180.0 - lastTiltDegrees)
+
+        updateLyingState()
+        publishSensorMetricsIfNeeded()
+    }
+
+    private fun updateLyingState() {
+        val now = SystemClock.uptimeMillis()
+        // Prefer gravity-based tilt if available; rotation-vector pitch/roll varies by device and screen rotation.
+        val isCandidate = if (!lastTiltDegrees.isNaN()) {
+            !lastTiltFromHorizontalDegrees.isNaN() && lastTiltFromHorizontalDegrees <= LYING_TILT_FROM_HORIZONTAL_DEG
+        } else if (!lastPitchDegrees.isNaN() && !lastRollDegrees.isNaN()) {
+            // Fallback: old heuristic.
+            val nearHorizontal = lastPitchDegrees >= LYING_PITCH_DEG
+            val sideWhileHorizontal = lastRollDegrees >= LYING_ROLL_DEG && lastPitchDegrees >= LYING_SIDE_MIN_PITCH_DEG
+            (nearHorizontal || sideWhileHorizontal)
+        } else {
+            false
+        }
+
+        // Hand-held tends to have small continuous micro-motion; completely static (on desk) should not trigger.
+        val handHeldLike = lastGyroMagnitude in LYING_MIN_GYRO_MAG..LYING_MAX_GYRO_MAG
+
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        val isInteractive = powerManager.isInteractive
+        val faceRecentlySeen = now - lastFaceSeenTimestamp <= LYING_FACE_RECENCY_MS
+
+        if (isCandidate && handHeldLike && isInteractive && faceRecentlySeen) {
+            if (lyingCandidateStartTimestamp == 0L) lyingCandidateStartTimestamp = now
+            if (!isLyingActive && now - lyingCandidateStartTimestamp >= LYING_HOLD_MS) {
+                isLyingActive = true
+                onLyingActivated(now)
+            }
+        } else {
+            lyingCandidateStartTimestamp = 0L
+            isLyingActive = false
+        }
+    }
+
+    private fun onLyingActivated(now: Long) {
+        if (!isMonitoringEnabled) return
+        if (now - lastLyingAlertTimestamp < LYING_ALERT_COOLDOWN_MS) return
+        lastLyingAlertTimestamp = now
+
+        // Trigger immediately; not dependent on camera analyze loop.
+        val mainExecutor = ContextCompat.getMainExecutor(this)
+        mainExecutor.execute {
+            if (!isMonitoringEnabled) return@execute
+            val didSpeak = speakWarning("不要躺著滑手機", priority = true)
+            if (didSpeak) {
+                vibrateWarning(priority = true)
+                showWarningNotification("不要躺著滑手機")
+            }
+        }
+    }
+
+    private fun publishSensorMetricsIfNeeded() {
+        if (!isMonitoringEnabled) return
+        val now = SystemClock.uptimeMillis()
+        if (now - lastSensorPublishTimestamp < SENSOR_METRICS_INTERVAL_MS) return
+        lastSensorPublishTimestamp = now
+
+        // Publish even if camera isn't producing frames so the "lying" indicator updates.
+        val prefs = getSharedPreferences("eyeprotect_prefs", Context.MODE_PRIVATE)
+        val existingMask = prefs.getInt(PREF_LIVE_WARNINGS_MASK, 0)
+        val lyingBit = if (isLyingActive) 8 else 0
+        val mergedMask = (existingMask and 0x7) or lyingBit
+        val editor = prefs.edit()
+            .putLong(PREF_LIVE_TS, now)
+            .putInt(PREF_LIVE_WARNINGS_MASK, mergedMask)
+        if (!lastPitchDegrees.isNaN()) editor.putFloat(PREF_LIVE_PITCH_DEG, lastPitchDegrees.toFloat())
+        if (!lastRollDegrees.isNaN()) editor.putFloat(PREF_LIVE_ROLL_DEG, lastRollDegrees.toFloat())
+        if (!lastTiltDegrees.isNaN()) editor.putFloat(PREF_LIVE_TILT_DEG, lastTiltDegrees.toFloat())
+        editor.apply()
+
+        val intent = Intent(ACTION_LIVE_METRICS).apply {
+            setPackage(packageName)
+            putExtra(EXTRA_LIVE_TS, now)
+            putExtra(EXTRA_LIVE_WARNINGS_MASK, mergedMask)
+            if (!lastPitchDegrees.isNaN()) putExtra(EXTRA_LIVE_PITCH_DEG, lastPitchDegrees.toFloat())
+            if (!lastRollDegrees.isNaN()) putExtra(EXTRA_LIVE_ROLL_DEG, lastRollDegrees.toFloat())
+            if (!lastTiltDegrees.isNaN()) putExtra(EXTRA_LIVE_TILT_DEG, lastTiltDegrees.toFloat())
+        }
+        sendBroadcast(intent)
     }
 
     @ExperimentalGetImage
     private fun startCamera() {
+        if (!isMonitoringEnabled) return
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
         cameraProviderFuture.addListener({
             try {
-                val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
-                val imageAnalyzer = ImageAnalysis.Builder()
+                val provider: ProcessCameraProvider = cameraProviderFuture.get()
+                cameraProvider = provider
+                val analyzer = ImageAnalysis.Builder()
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
                     .also {
                         it.setAnalyzer(cameraExecutor, this::analyzeImage)
                     }
+                imageAnalyzer = analyzer
                 val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
-                cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(this, cameraSelector, imageAnalyzer)
+                provider.unbindAll()
+                provider.bindToLifecycle(this, cameraSelector, analyzer)
             } catch (e: Exception) {
                 Log.e(TAG, "CameraX failed", e)
             }
         }, ContextCompat.getMainExecutor(this))
     }
 
+    private fun stopCamera() {
+        try {
+            imageAnalyzer?.clearAnalyzer()
+        } catch (_: Exception) {
+        }
+        try {
+            cameraProvider?.unbindAll()
+        } catch (_: Exception) {
+        }
+        imageAnalyzer = null
+        cameraProvider = null
+    }
+
     @ExperimentalGetImage
     private fun analyzeImage(imageProxy: ImageProxy) {
+        if (!isMonitoringEnabled) {
+            imageProxy.close()
+            return
+        }
         val currentTimestamp = SystemClock.uptimeMillis()
         if (currentTimestamp - lastDetectionTimestamp < DETECTION_INTERVAL_MS) {
             imageProxy.close()
@@ -177,30 +439,33 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
         val faceTask = faceDetector.process(image)
         val poseTask = poseDetector.process(image)
 
-        Tasks.whenAllComplete(faceTask, poseTask)
-            .addOnSuccessListener {
-                val faces = faceTask.result
-                val pose = poseTask.result
-                val face = faces?.firstOrNull()
-                
-                val warnings = detector.detectWarnings(
-                    face = face,
-                    pose = pose,
-                    imageWidth = imageWidth,
-                    imageHeight = imageHeight
-                )
-                
-                publishLiveMetrics(
-                    face = face,
-                    pose = pose,
-                    imageWidth = imageWidth,
-                    warnings = warnings
-                )
-                handleWarningState(warnings)
-            }
-            .addOnCompleteListener {
+        // Always update state even if one task fails; otherwise UI/warnings can get "stuck".
+        Tasks.whenAllComplete(faceTask, poseTask).addOnCompleteListener {
+            if (!isMonitoringEnabled) {
                 imageProxy.close()
+                return@addOnCompleteListener
             }
+            val face = if (faceTask.isSuccessful) faceTask.result?.firstOrNull() else null
+            val pose = if (poseTask.isSuccessful) poseTask.result else null
+            if (face != null) lastFaceSeenTimestamp = SystemClock.uptimeMillis()
+
+            val warnings = detector.detectWarnings(
+                face = face,
+                pose = pose,
+                imageWidth = imageWidth,
+                imageHeight = imageHeight
+            )
+
+            publishLiveMetrics(
+                face = face,
+                pose = pose,
+                imageWidth = imageWidth,
+                warnings = warnings
+            )
+            handleWarningState(warnings)
+
+            imageProxy.close()
+        }
     }
 
     private fun publishLiveMetrics(
@@ -209,42 +474,61 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
         imageWidth: Int,
         warnings: Set<WarningState>
     ) {
+        if (!isMonitoringEnabled) return
+        val warningsWithLying = if (isLyingActive) warnings + WarningState.LYING else warnings
         val irisNorm = face?.let { detector.computeNormalizedIrisDistance(it, imageWidth) }
         val eyeOpenMin = face?.let { detector.computeEyeOpenMin(it) }
         val slouchScore = pose?.let { detector.computePostureRatio(it) }
 
         val warningsMask =
-            (if (warnings.contains(WarningState.TOO_CLOSE)) 1 else 0) or
-                (if (warnings.contains(WarningState.SQUINTING)) 2 else 0) or
-                (if (warnings.contains(WarningState.SLOUCHING)) 4 else 0)
+            (if (warningsWithLying.contains(WarningState.TOO_CLOSE)) 1 else 0) or
+                (if (warningsWithLying.contains(WarningState.SQUINTING)) 2 else 0) or
+                (if (warningsWithLying.contains(WarningState.SLOUCHING)) 4 else 0) or
+                (if (warningsWithLying.contains(WarningState.LYING)) 8 else 0)
 
         val now = SystemClock.uptimeMillis()
         val prefs = getSharedPreferences("eyeprotect_prefs", Context.MODE_PRIVATE)
         val editor = prefs.edit()
             .putLong(PREF_LIVE_TS, now)
             .putInt(PREF_LIVE_WARNINGS_MASK, warningsMask)
-        if (irisNorm != null) editor.putFloat(PREF_LIVE_IRIS_NORM, irisNorm)
-        if (eyeOpenMin != null) editor.putFloat(PREF_LIVE_EYE_OPEN_MIN, eyeOpenMin)
-        if (slouchScore != null) editor.putFloat(PREF_LIVE_SLOUCH_SCORE, slouchScore.toFloat())
+        // Clear stale values when the current frame has no face/pose.
+        editor.putFloat(PREF_LIVE_IRIS_NORM, irisNorm ?: Float.NaN)
+        editor.putFloat(PREF_LIVE_EYE_OPEN_MIN, eyeOpenMin ?: Float.NaN)
+        editor.putFloat(PREF_LIVE_SLOUCH_SCORE, slouchScore?.toFloat() ?: Float.NaN)
+        if (!lastPitchDegrees.isNaN()) editor.putFloat(PREF_LIVE_PITCH_DEG, lastPitchDegrees.toFloat())
+        if (!lastRollDegrees.isNaN()) editor.putFloat(PREF_LIVE_ROLL_DEG, lastRollDegrees.toFloat())
+        if (!lastTiltDegrees.isNaN()) editor.putFloat(PREF_LIVE_TILT_DEG, lastTiltDegrees.toFloat())
         editor.apply()
 
         val intent = Intent(ACTION_LIVE_METRICS).apply {
             setPackage(packageName)
             putExtra(EXTRA_LIVE_TS, now)
             putExtra(EXTRA_LIVE_WARNINGS_MASK, warningsMask)
-            if (irisNorm != null) putExtra(EXTRA_LIVE_IRIS_NORM, irisNorm)
-            if (eyeOpenMin != null) putExtra(EXTRA_LIVE_EYE_OPEN_MIN, eyeOpenMin)
-            if (slouchScore != null) putExtra(EXTRA_LIVE_SLOUCH_SCORE, slouchScore.toFloat())
+            putExtra(EXTRA_LIVE_IRIS_NORM, irisNorm ?: Float.NaN)
+            putExtra(EXTRA_LIVE_EYE_OPEN_MIN, eyeOpenMin ?: Float.NaN)
+            putExtra(EXTRA_LIVE_SLOUCH_SCORE, slouchScore?.toFloat() ?: Float.NaN)
+            if (!lastPitchDegrees.isNaN()) putExtra(EXTRA_LIVE_PITCH_DEG, lastPitchDegrees.toFloat())
+            if (!lastRollDegrees.isNaN()) putExtra(EXTRA_LIVE_ROLL_DEG, lastRollDegrees.toFloat())
+            if (!lastTiltDegrees.isNaN()) putExtra(EXTRA_LIVE_TILT_DEG, lastTiltDegrees.toFloat())
         }
         sendBroadcast(intent)
     }
 
     private fun handleWarningState(warnings: Set<WarningState>) {
+        if (!isMonitoringEnabled) {
+            ContextCompat.getMainExecutor(this).execute {
+                hideScreenOverlay()
+                isTooCloseOverlayShown = false
+            }
+            return
+        }
         val mainExecutor = ContextCompat.getMainExecutor(this)
         
         mainExecutor.execute {
+            if (!isMonitoringEnabled) return@execute
+            val effectiveWarnings = if (isLyingActive) warnings + WarningState.LYING else warnings
             // 處理距離過近 (全螢幕遮罩)
-            if (warnings.contains(WarningState.TOO_CLOSE)) {
+            if (effectiveWarnings.contains(WarningState.TOO_CLOSE)) {
                 if (!isTooCloseOverlayShown) {
                     showScreenOverlay()
                     isTooCloseOverlayShown = true
@@ -263,8 +547,9 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
 
             // 處理瞇眼與駝背 (通知與語音)
             val postureText = mutableListOf<String>()
-            if (warnings.contains(WarningState.SQUINTING)) postureText.add("不要瞇眼")
-            if (warnings.contains(WarningState.SLOUCHING)) postureText.add("請坐端正")
+            if (effectiveWarnings.contains(WarningState.SQUINTING)) postureText.add("不要瞇眼")
+            if (effectiveWarnings.contains(WarningState.SLOUCHING)) postureText.add("請坐端正")
+            if (effectiveWarnings.contains(WarningState.LYING)) postureText.add("不要躺著滑手機")
 
             if (postureText.isNotEmpty()) {
                 val message = postureText.joinToString("，")
@@ -278,6 +563,7 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
     }
 
     private fun vibrateWarning(priority: Boolean = false): Boolean {
+        if (!isMonitoringEnabled) return false
         val currentTime = SystemClock.uptimeMillis()
         if (!priority && (currentTime - lastVibrationTimestamp <= VIBRATION_COOLDOWN_MS)) return false
 
@@ -303,8 +589,13 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
     }
 
     private fun speakWarning(text: String, priority: Boolean = false): Boolean {
+        if (!isMonitoringEnabled) return false
         val currentTime = SystemClock.uptimeMillis()
         if (priority || (currentTime - lastTtsTimestamp > VOICE_ALERT_COOLDOWN_MS)) {
+            if (priority && tts.isSpeaking) {
+                // Force the urgent message through.
+                tts.stop()
+            }
             if (!tts.isSpeaking) {
                 applyRandomVoiceAndTone(currentTime)
                 tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "warning")
@@ -362,6 +653,7 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
     }
 
     private fun showScreenOverlay() {
+        if (!isMonitoringEnabled) return
         if (overlayView != null) return
         overlayView = View(this).apply { setBackgroundColor(Color.parseColor("#CC000000")) }
         val params = WindowManager.LayoutParams(
@@ -375,7 +667,17 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
     }
 
     private fun hideScreenOverlay() {
-        overlayView?.let { try { windowManager.removeView(it) } catch (e: Exception) {} }
+        overlayView?.let {
+            try {
+                // More aggressive removal; helps avoid a stuck dim overlay when state changes quickly.
+                windowManager.removeViewImmediate(it)
+            } catch (_: Exception) {
+                try {
+                    windowManager.removeView(it)
+                } catch (_: Exception) {
+                }
+            }
+        }
         overlayView = null
     }
 
@@ -405,6 +707,9 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
     override fun onDestroy() {
         super.onDestroy()
         unregisterReceiver(thresholdUpdateReceiver)
+        unregisterReceiver(monitoringToggleReceiver)
+        stopSensors()
+        stopCamera()
         cameraExecutor.shutdown()
         tts.shutdown()
         hideScreenOverlay()
@@ -420,6 +725,7 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
     companion object {
         const val ACTION_UPDATE_THRESHOLDS = "com.example.eyeprotect.UPDATE_THRESHOLDS"
         const val ACTION_LIVE_METRICS = "com.example.eyeprotect.LIVE_METRICS"
+        const val ACTION_SET_MONITORING = "com.example.eyeprotect.SET_MONITORING"
         private const val TAG = "EyeHealthService"
         private const val CHANNEL_ID = "WarningChannel"
         private const val NOTIFICATION_ID = 1
@@ -427,16 +733,35 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
         private const val VOICE_ALERT_COOLDOWN_MS = 15000L
         private const val VIBRATION_COOLDOWN_MS = 3000L
 
+        const val PREF_MONITORING_ENABLED = "monitoring_enabled"
         const val PREF_LIVE_TS = "live_ts"
         const val PREF_LIVE_IRIS_NORM = "live_iris_norm"
         const val PREF_LIVE_EYE_OPEN_MIN = "live_eye_open_min"
         const val PREF_LIVE_SLOUCH_SCORE = "live_slouch_score"
+        const val PREF_LIVE_PITCH_DEG = "live_pitch_deg"
+        const val PREF_LIVE_ROLL_DEG = "live_roll_deg"
+        const val PREF_LIVE_TILT_DEG = "live_tilt_deg"
         const val PREF_LIVE_WARNINGS_MASK = "live_warnings_mask"
 
         const val EXTRA_LIVE_TS = "ts"
         const val EXTRA_LIVE_IRIS_NORM = "irisNorm"
         const val EXTRA_LIVE_EYE_OPEN_MIN = "eyeOpenMin"
         const val EXTRA_LIVE_SLOUCH_SCORE = "slouchScore"
+        const val EXTRA_LIVE_PITCH_DEG = "pitchDeg"
+        const val EXTRA_LIVE_ROLL_DEG = "rollDeg"
+        const val EXTRA_LIVE_TILT_DEG = "tiltDeg"
         const val EXTRA_LIVE_WARNINGS_MASK = "warningsMask"
+        const val EXTRA_MONITORING_ENABLED = "enabled"
+
+        private const val SENSOR_METRICS_INTERVAL_MS = 500L
+        private const val LYING_HOLD_MS = 3000L
+        private const val LYING_PITCH_DEG = 65.0
+        private const val LYING_ROLL_DEG = 65.0
+        private const val LYING_SIDE_MIN_PITCH_DEG = 35.0
+        private const val LYING_TILT_FROM_HORIZONTAL_DEG = 25.0
+        private const val LYING_MIN_GYRO_MAG = 0.03 // rad/s; near-zero often means on a desk
+        private const val LYING_MAX_GYRO_MAG = 3.0 // rad/s
+        private const val LYING_FACE_RECENCY_MS = 5000L
+        private const val LYING_ALERT_COOLDOWN_MS = 20000L
     }
 }

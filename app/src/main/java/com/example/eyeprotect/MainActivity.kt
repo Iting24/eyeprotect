@@ -404,11 +404,17 @@ fun DashboardScreen(
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("eyeprotect_prefs", Context.MODE_PRIVATE) }
+    var monitoringEnabled by remember {
+        mutableStateOf(prefs.getBoolean(EyeHealthAccessibilityService.PREF_MONITORING_ENABLED, true))
+    }
 
     var liveTs by remember { mutableLongStateOf(prefs.getLong(EyeHealthAccessibilityService.PREF_LIVE_TS, 0L)) }
     var irisNorm by remember { mutableFloatStateOf(prefs.getFloat(EyeHealthAccessibilityService.PREF_LIVE_IRIS_NORM, Float.NaN)) }
     var eyeOpenMin by remember { mutableFloatStateOf(prefs.getFloat(EyeHealthAccessibilityService.PREF_LIVE_EYE_OPEN_MIN, Float.NaN)) }
     var slouchScore by remember { mutableFloatStateOf(prefs.getFloat(EyeHealthAccessibilityService.PREF_LIVE_SLOUCH_SCORE, Float.NaN)) }
+    var pitchDeg by remember { mutableFloatStateOf(prefs.getFloat(EyeHealthAccessibilityService.PREF_LIVE_PITCH_DEG, Float.NaN)) }
+    var rollDeg by remember { mutableFloatStateOf(prefs.getFloat(EyeHealthAccessibilityService.PREF_LIVE_ROLL_DEG, Float.NaN)) }
+    var tiltDeg by remember { mutableFloatStateOf(prefs.getFloat(EyeHealthAccessibilityService.PREF_LIVE_TILT_DEG, Float.NaN)) }
     var warningsMask by remember { mutableIntStateOf(prefs.getInt(EyeHealthAccessibilityService.PREF_LIVE_WARNINGS_MASK, 0)) }
 
     val irisThreshold = prefs.getFloat("iris_threshold", Float.NaN)
@@ -420,7 +426,18 @@ fun DashboardScreen(
             override fun onReceive(ctx: Context, intent: Intent) {
                 if (intent.action != EyeHealthAccessibilityService.ACTION_LIVE_METRICS) return
                 liveTs = intent.getLongExtra(EyeHealthAccessibilityService.EXTRA_LIVE_TS, liveTs)
-                warningsMask = intent.getIntExtra(EyeHealthAccessibilityService.EXTRA_LIVE_WARNINGS_MASK, warningsMask)
+                val incomingMask = intent.getIntExtra(EyeHealthAccessibilityService.EXTRA_LIVE_WARNINGS_MASK, warningsMask)
+                val isSensorOnly =
+                    !intent.hasExtra(EyeHealthAccessibilityService.EXTRA_LIVE_IRIS_NORM) &&
+                        !intent.hasExtra(EyeHealthAccessibilityService.EXTRA_LIVE_EYE_OPEN_MIN) &&
+                        !intent.hasExtra(EyeHealthAccessibilityService.EXTRA_LIVE_SLOUCH_SCORE)
+                warningsMask = if (isSensorOnly) {
+                    // Update only LYING bit (8), keep the rest from camera.
+                    (warningsMask and 0x7) or (incomingMask and 0x8)
+                } else {
+                    // Camera publish includes full mask.
+                    incomingMask
+                }
                 if (intent.hasExtra(EyeHealthAccessibilityService.EXTRA_LIVE_IRIS_NORM)) {
                     irisNorm = intent.getFloatExtra(EyeHealthAccessibilityService.EXTRA_LIVE_IRIS_NORM, irisNorm)
                 }
@@ -429,6 +446,15 @@ fun DashboardScreen(
                 }
                 if (intent.hasExtra(EyeHealthAccessibilityService.EXTRA_LIVE_SLOUCH_SCORE)) {
                     slouchScore = intent.getFloatExtra(EyeHealthAccessibilityService.EXTRA_LIVE_SLOUCH_SCORE, slouchScore)
+                }
+                if (intent.hasExtra(EyeHealthAccessibilityService.EXTRA_LIVE_PITCH_DEG)) {
+                    pitchDeg = intent.getFloatExtra(EyeHealthAccessibilityService.EXTRA_LIVE_PITCH_DEG, pitchDeg)
+                }
+                if (intent.hasExtra(EyeHealthAccessibilityService.EXTRA_LIVE_ROLL_DEG)) {
+                    rollDeg = intent.getFloatExtra(EyeHealthAccessibilityService.EXTRA_LIVE_ROLL_DEG, rollDeg)
+                }
+                if (intent.hasExtra(EyeHealthAccessibilityService.EXTRA_LIVE_TILT_DEG)) {
+                    tiltDeg = intent.getFloatExtra(EyeHealthAccessibilityService.EXTRA_LIVE_TILT_DEG, tiltDeg)
                 }
             }
         }
@@ -469,6 +495,19 @@ fun DashboardScreen(
 
         EyeHealthCard(isServiceEnabled = isServiceEnabled, hasCameraPermission = hasCameraPermission)
 
+        MonitoringToggleCard(
+            enabled = monitoringEnabled,
+            onToggle = { enabled ->
+                monitoringEnabled = enabled
+                prefs.edit().putBoolean(EyeHealthAccessibilityService.PREF_MONITORING_ENABLED, enabled).apply()
+                val intent = Intent(EyeHealthAccessibilityService.ACTION_SET_MONITORING).apply {
+                    setPackage(context.packageName)
+                    putExtra(EyeHealthAccessibilityService.EXTRA_MONITORING_ENABLED, enabled)
+                }
+                context.sendBroadcast(intent)
+            }
+        )
+
         LiveMetricsCard(
             isServiceEnabled = isServiceEnabled,
             hasCameraPermission = hasCameraPermission,
@@ -476,6 +515,9 @@ fun DashboardScreen(
             irisNorm = irisNorm,
             eyeOpenMin = eyeOpenMin,
             slouchScore = slouchScore,
+            pitchDeg = pitchDeg,
+            rollDeg = rollDeg,
+            tiltDeg = tiltDeg,
             warningsMask = warningsMask,
             irisThreshold = irisThreshold,
             eyeOpenThreshold = eyeOpenThreshold,
@@ -567,6 +609,41 @@ fun DashboardScreen(
 }
 
 @Composable
+private fun MonitoringToggleCard(
+    enabled: Boolean,
+    onToggle: (Boolean) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column {
+                Text(
+                    text = if (enabled) "監測中" else "已暫停監測",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold
+                )
+                Text(
+                    text = if (enabled) "會更新指標並提醒" else "不更新指標，也不提醒",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+                )
+            }
+            Switch(checked = enabled, onCheckedChange = onToggle)
+        }
+    }
+}
+
+@Composable
 private fun LiveMetricsCard(
     isServiceEnabled: Boolean,
     hasCameraPermission: Boolean,
@@ -574,6 +651,9 @@ private fun LiveMetricsCard(
     irisNorm: Float,
     eyeOpenMin: Float,
     slouchScore: Float,
+    pitchDeg: Float,
+    rollDeg: Float,
+    tiltDeg: Float,
     warningsMask: Int,
     irisThreshold: Float,
     eyeOpenThreshold: Float,
@@ -583,6 +663,7 @@ private fun LiveMetricsCard(
     val tooClose = warningsMask and 1 != 0
     val squinting = warningsMask and 2 != 0
     val slouching = warningsMask and 4 != 0
+    val lying = warningsMask and 8 != 0
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -644,12 +725,19 @@ private fun LiveMetricsCard(
                 threshold = if (slouchThreshold.isNaN()) null else formatFloat(slouchThreshold),
                 warning = slouching
             )
+            MetricsRow(
+                label = "躺姿(tilt/pitch/roll)",
+                value = "${formatDeg(tiltDeg)} / ${formatDeg(pitchDeg)} / ${formatDeg(rollDeg)}",
+                threshold = null,
+                warning = lying
+            )
 
             Spacer(modifier = Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 StatusChip("太近", tooClose)
                 StatusChip("咪眼", squinting)
                 StatusChip("駝背", slouching)
+                StatusChip("躺著", lying)
             }
         }
     }
@@ -701,6 +789,11 @@ private fun StatusChip(text: String, active: Boolean) {
 private fun formatFloat(value: Float): String {
     if (value.isNaN()) return "--"
     return String.format(Locale.US, "%.3f", value)
+}
+
+private fun formatDeg(value: Float): String {
+    if (value.isNaN()) return "--"
+    return value.toInt().toString()
 }
 
 @Composable

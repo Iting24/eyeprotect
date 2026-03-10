@@ -11,7 +11,8 @@ import kotlin.math.sqrt
 enum class WarningState {
     TOO_CLOSE,
     SLOUCHING,
-    SQUINTING
+    SQUINTING,
+    LYING
 }
 
 class PostureAndEyeDetector {
