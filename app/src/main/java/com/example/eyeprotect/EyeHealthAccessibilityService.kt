@@ -53,7 +53,6 @@ import kotlin.random.Random
 
 @AndroidEntryPoint
 @Suppress("LeakingThis")
-@ExperimentalGetImage
 class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnInitListener, LifecycleOwner {
 
     @Inject
@@ -73,6 +72,12 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
     private val cameraExecutor = Executors.newSingleThreadExecutor()
     private var cameraProvider: ProcessCameraProvider? = null
     private var imageAnalyzer: ImageAnalysis? = null
+    private val cameraFrameAnalyzer = object : ImageAnalysis.Analyzer {
+        @ExperimentalGetImage
+        override fun analyze(imageProxy: ImageProxy) {
+            analyzeImage(imageProxy)
+        }
+    }
     private var lastDetectionTimestamp = 0L
     private var lastTtsTimestamp = 0L
     private var lastVibrationTimestamp = 0L
@@ -376,7 +381,6 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
         sendBroadcast(intent)
     }
 
-    @ExperimentalGetImage
     private fun startCamera() {
         if (!isMonitoringEnabled) return
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
@@ -388,7 +392,7 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
                     .also {
-                        it.setAnalyzer(cameraExecutor, this::analyzeImage)
+                        it.setAnalyzer(cameraExecutor, cameraFrameAnalyzer)
                     }
                 imageAnalyzer = analyzer
                 val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA

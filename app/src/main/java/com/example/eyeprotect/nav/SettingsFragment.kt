@@ -22,6 +22,7 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.Fragment
+import androidx.navigation.fragment.findNavController
 import com.example.eyeprotect.CalibrationScreen
 import com.example.eyeprotect.R
 import com.example.eyeprotect.ui.theme.EyeprotectTheme
@@ -45,7 +46,12 @@ class SettingsFragment : Fragment() {
                         SettingsScreen(
                             faceDetector = faceDetector,
                             poseDetector = poseDetector,
-                            openCalibrationInitially = openCalibrationArg
+                            openCalibrationInitially = openCalibrationArg,
+                            onCalibrationComplete = {
+                                if (openCalibrationArg) {
+                                    findNavController().popBackStack(R.id.dashboardFragment, false)
+                                }
+                            }
                         )
                     }
                 }
@@ -58,14 +64,18 @@ class SettingsFragment : Fragment() {
 private fun SettingsScreen(
     faceDetector: FaceDetector,
     poseDetector: PoseDetector,
-    openCalibrationInitially: Boolean
+    openCalibrationInitially: Boolean,
+    onCalibrationComplete: () -> Unit
 ) {
     var showCalibration by remember(openCalibrationInitially) { mutableStateOf(openCalibrationInitially) }
     if (showCalibration) {
         CalibrationScreen(
             faceDetector = faceDetector,
             poseDetector = poseDetector,
-            onCalibrationComplete = { showCalibration = false }
+            onCalibrationComplete = {
+                showCalibration = false
+                onCalibrationComplete()
+            }
         )
         return
     }

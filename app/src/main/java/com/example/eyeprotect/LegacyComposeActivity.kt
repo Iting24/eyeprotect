@@ -215,34 +215,38 @@ fun CalibrationScreen(
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .build()
 
-        imageAnalysis.setAnalyzer(ContextCompat.getMainExecutor(context)) { imageProxy ->
-            val mediaImage = imageProxy.image
-            if (mediaImage != null && isCalibrating && countdown > 0) {
-                val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-                val faceTask = faceDetector.process(image)
-                val poseTask = poseDetector.process(image)
+        val analyzer = object : ImageAnalysis.Analyzer {
+            @androidx.camera.core.ExperimentalGetImage
+            override fun analyze(imageProxy: androidx.camera.core.ImageProxy) {
+                val mediaImage = imageProxy.image
+                if (mediaImage != null && isCalibrating && countdown > 0) {
+                    val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
+                    val faceTask = faceDetector.process(image)
+                    val poseTask = poseDetector.process(image)
 
-                Tasks.whenAllComplete(faceTask, poseTask).addOnCompleteListener {
-                    if (faceTask.isSuccessful && poseTask.isSuccessful) {
-                        val face = faceTask.result?.firstOrNull()
-                        val pose = poseTask.result
-                        val imageWidth =
-                            if (imageProxy.imageInfo.rotationDegrees % 180 == 0) imageProxy.width else imageProxy.height
+                    Tasks.whenAllComplete(faceTask, poseTask).addOnCompleteListener {
+                        if (faceTask.isSuccessful && poseTask.isSuccessful) {
+                            val face = faceTask.result?.firstOrNull()
+                            val pose = poseTask.result
+                            val imageWidth =
+                                if (imageProxy.imageInfo.rotationDegrees % 180 == 0) imageProxy.width else imageProxy.height
 
-                        if (face != null) {
-                            metricDetector.computeNormalizedIrisDistance(face, imageWidth)?.let(irisDistances::add)
-                            metricDetector.computeEyeOpenMin(face)?.let(eyeOpenMins::add)
+                            if (face != null) {
+                                metricDetector.computeNormalizedIrisDistance(face, imageWidth)?.let(irisDistances::add)
+                                metricDetector.computeEyeOpenMin(face)?.let(eyeOpenMins::add)
+                            }
+                            if (pose != null) {
+                                metricDetector.computePostureRatio(pose)?.let(slouchAngles::add)
+                            }
                         }
-                        if (pose != null) {
-                            metricDetector.computePostureRatio(pose)?.let(slouchAngles::add)
-                        }
+                        imageProxy.close()
                     }
+                } else {
                     imageProxy.close()
                 }
-            } else {
-                imageProxy.close()
             }
         }
+        imageAnalysis.setAnalyzer(ContextCompat.getMainExecutor(context), analyzer)
 
         try {
             cameraProvider.unbindAll()
@@ -298,7 +302,9 @@ fun CalibrationScreen(
                 .apply()
 
             // 通知服務更新門檻
-            val intent = Intent(EyeHealthAccessibilityService.ACTION_UPDATE_THRESHOLDS)
+            val intent = Intent(EyeHealthAccessibilityService.ACTION_UPDATE_THRESHOLDS).apply {
+                setPackage(context.packageName)
+            }
             intent.putExtra("irisDistance", distanceThreshold)
             intent.putExtra("eyeOpenThreshold", squintThreshold)
             intent.putExtra("slouchAngleThreshold", slouchThreshold)

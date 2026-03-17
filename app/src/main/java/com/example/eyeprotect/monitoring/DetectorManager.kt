@@ -8,6 +8,7 @@ import android.hardware.SensorManager
 import android.os.SystemClock
 import android.util.Log
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -214,10 +215,11 @@ class DetectorManager(
             try {
                 val provider: ProcessCameraProvider = cameraProviderFuture.get()
                 cameraProvider = provider
+                val analyzerImpl = FrameAnalyzer(onMetrics)
                 val analyzer = ImageAnalysis.Builder()
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
-                    .also { it.setAnalyzer(cameraExecutor) { proxy -> analyzeImage(proxy, onMetrics) } }
+                    .also { it.setAnalyzer(cameraExecutor, analyzerImpl) }
                 imageAnalyzer = analyzer
                 val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
                 provider.unbindAll()
@@ -241,6 +243,7 @@ class DetectorManager(
         cameraProvider = null
     }
 
+    @ExperimentalGetImage
     private fun analyzeImage(imageProxy: ImageProxy, onMetrics: (MonitoringMetrics) -> Unit) {
         if (!isRunning) {
             imageProxy.close()
@@ -307,6 +310,15 @@ class DetectorManager(
             )
 
             imageProxy.close()
+        }
+    }
+
+    private inner class FrameAnalyzer(
+        private val onMetrics: (MonitoringMetrics) -> Unit
+    ) : ImageAnalysis.Analyzer {
+        @ExperimentalGetImage
+        override fun analyze(imageProxy: ImageProxy) {
+            analyzeImage(imageProxy, onMetrics)
         }
     }
 
