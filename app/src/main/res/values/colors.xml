@@ -7,4 +7,12 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- Match legacy Compose dark palette (ui/theme/Color.kt) -->
+    <color name="dark_navy">#FF0A0E17</color>
+    <color name="card_background">#FF161B22</color>
+    <color name="accent_teal">#FF00BFA5</color>
+    <color name="accent_orange">#FFFB8C00</color>
+    <color name="text_white">#FFF0F0F0</color>
+    <color name="text_grey">#FFABAFB3</color>
 </resources>

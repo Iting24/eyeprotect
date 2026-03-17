@@ -1,7 +1,28 @@
 <resources>
-    <string name="app_name">eyeprotect</string>
-    <string name="accessibility_service_description">This service monitors your posture and distance from the screen to help you maintain good eye health.</string>
+    <string name="app_name">VisionGuard AI</string>
+    <string name="accessibility_service_description">此服務會監測您的姿勢與螢幕距離，提供即時提醒以維持良好用眼習慣。</string>
     <string name="main_screen_title">開啟護眼服務</string>
     <string name="main_screen_description">啟用無障礙服務，我們將能為您的姿勢和眼睛疲勞提供即時警告。</string>
     <string name="enable_service_button">開啟服務</string>
+
+    <string name="nav_dashboard">首頁</string>
+    <string name="nav_vision_tool">視覺工具</string>
+    <string name="nav_eye_exercise">眼球體操</string>
+    <string name="nav_settings">設定</string>
+
+    <string name="title_dashboard">首頁</string>
+    <string name="title_vision_tool">視覺工具</string>
+    <string name="title_eye_exercise">眼球體操</string>
+    <string name="title_settings">設定／校準</string>
+
+    <string name="vision_tool_subtitle">色盲 AR 辨識（相機）</string>
+    <string name="vision_tool_permission_granted">相機權限已授權，這裡可以放入 Preview + AR 辨識流程。</string>
+    <string name="request_camera_permission">請求相機權限</string>
+
+    <string name="eye_exercise_subtitle">手動啟動體操（需要懸浮窗權限）</string>
+    <string name="eye_exercise_start">啟動體操</string>
+    <string name="eye_exercise_timer">定時：%1$ds</string>
+
+    <string name="settings_subtitle">個人姿勢基準校準、參數調整</string>
+    <string name="start_calibration">開始校準</string>
 </resources>

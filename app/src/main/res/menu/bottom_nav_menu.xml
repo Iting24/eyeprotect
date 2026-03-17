@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/dashboardFragment"
+        android:icon="@drawable/ic_nav_dashboard"
+        android:title="@string/nav_dashboard" />
+    <item
+        android:id="@+id/visionToolFragment"
+        android:icon="@drawable/ic_nav_vision"
+        android:title="@string/nav_vision_tool" />
+    <item
+        android:id="@+id/eyeExerciseFragment"
+        android:icon="@drawable/ic_nav_exercise"
+        android:title="@string/nav_eye_exercise" />
+    <item
+        android:id="@+id/settingsFragment"
+        android:icon="@drawable/ic_nav_settings"
+        android:title="@string/nav_settings" />
+</menu>
