@@ -10,6 +10,7 @@ import android.content.pm.PackageManager
 import android.provider.Settings
 import android.text.TextUtils
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -57,8 +58,8 @@ private fun DashboardRoute(
     onReCalibrate: () -> Unit,
     onOpenEyeExercise: () -> Unit
 ) {
-    EyeprotectTheme(darkTheme = true) {
-        Surface(modifier = Modifier.fillMaxSize()) {
+    EyeprotectTheme {
+        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             val context = androidx.compose.ui.platform.LocalContext.current
             val lifecycleOwner = LocalLifecycleOwner.current
             val prefs = remember(context) { context.getSharedPreferences("eyeprotect_prefs", Context.MODE_PRIVATE) }

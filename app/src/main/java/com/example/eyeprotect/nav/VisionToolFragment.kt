@@ -39,8 +39,8 @@ class VisionToolFragment : Fragment() {
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         return ComposeView(requireContext()).apply {
             setContent {
-                EyeprotectTheme(darkTheme = true) {
-                    Surface(modifier = Modifier.fillMaxSize()) {
+                EyeprotectTheme {
+                    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                         VisionToolScreen()
                     }
                 }

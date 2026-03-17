@@ -1,7 +1,6 @@
 package com.example.eyeprotect.ui.theme
 
 import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -28,15 +27,18 @@ private val LightColorScheme = lightColorScheme(
     onPrimary = Color.White,
     secondary = AccentOrange,
     onSecondary = Color.Black,
-    background = Color.White,
-    onBackground = Color.Black,
-    surface = Color(0xFFF0F0F0),
-    onSurface = Color.Black
+    background = Color(0xFFF6FAFF),
+    onBackground = Color(0xFF0F172A),
+    surface = Color.White,
+    onSurface = Color(0xFF0F172A),
+    surfaceVariant = Color(0xFFF1F5F9),
+    onSurfaceVariant = Color(0xFF475569),
+    outline = Color(0xFFE2E8F0)
 )
 
 @Composable
 fun EyeprotectTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean = false,
     // Dynamic color is disabled to ensure high contrast color-blind friendly colors are used
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit

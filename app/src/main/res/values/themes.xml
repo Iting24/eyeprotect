@@ -3,9 +3,9 @@
     <style name="Theme.Eyeprotect" parent="Theme.MaterialComponents.DayNight.NoActionBar">
         <item name="colorPrimary">@color/accent_teal</item>
         <item name="colorSecondary">@color/accent_orange</item>
-        <item name="android:windowBackground">@color/dark_navy</item>
-        <item name="android:statusBarColor">@color/dark_navy</item>
-        <item name="android:navigationBarColor">@color/card_background</item>
-        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowBackground">@color/light_background</item>
+        <item name="android:statusBarColor">@color/light_background</item>
+        <item name="android:navigationBarColor">@color/light_nav_background</item>
+        <item name="android:windowLightStatusBar">true</item>
     </style>
 </resources>

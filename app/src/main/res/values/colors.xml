@@ -15,4 +15,12 @@
     <color name="accent_orange">#FFFB8C00</color>
     <color name="text_white">#FFF0F0F0</color>
     <color name="text_grey">#FFABAFB3</color>
+
+    <!-- Light UI palette (default) -->
+    <color name="light_background">#FFF6FAFF</color>
+    <color name="light_surface">#FFFFFFFF</color>
+    <color name="light_nav_background">#FFFFFFFF</color>
+    <color name="light_text_primary">#FF0F172A</color>
+    <color name="light_text_secondary">#FF475569</color>
+    <color name="light_outline">#FFE2E8F0</color>
 </resources>

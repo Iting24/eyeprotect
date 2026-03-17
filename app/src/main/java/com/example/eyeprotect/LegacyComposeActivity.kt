@@ -86,7 +86,7 @@ class LegacyComposeActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            EyeprotectTheme(darkTheme = true) {
+            EyeprotectTheme {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     containerColor = MaterialTheme.colorScheme.background
@@ -596,35 +596,28 @@ private fun GridBackdrop(modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
         val bg = Brush.linearGradient(
             colors = listOf(
-                Color(0xFF061A1B),
-                Color(0xFF071626),
-                Color(0xFF05121E)
+                Color(0xFFF7FBFF),
+                Color(0xFFF2F7FF),
+                Color(0xFFEEF4FF)
             )
         )
         drawRect(brush = bg)
 
-        // Soft highlight blob.
+        // Soft, friendly blobs (reference-style background).
         drawRect(
             brush = Brush.radialGradient(
-                colors = listOf(Color(0x3347F1B5), Color.Transparent),
-                center = Offset(size.width * 0.78f, size.height * 0.18f),
-                radius = size.minDimension * 0.55f
+                colors = listOf(Color(0x334CC9F0), Color.Transparent),
+                center = Offset(size.width * 0.18f, size.height * 0.18f),
+                radius = size.minDimension * 0.65f
             )
         )
-
-        // Grid.
-        val spacing = 34.dp.toPx()
-        val lineColor = Color.White.copy(alpha = 0.05f)
-        var x = 0f
-        while (x <= size.width) {
-            drawLine(lineColor, start = Offset(x, 0f), end = Offset(x, size.height), strokeWidth = 1f)
-            x += spacing
-        }
-        var y = 0f
-        while (y <= size.height) {
-            drawLine(lineColor, start = Offset(0f, y), end = Offset(size.width, y), strokeWidth = 1f)
-            y += spacing
-        }
+        drawRect(
+            brush = Brush.radialGradient(
+                colors = listOf(Color(0x33A7F3D0), Color.Transparent),
+                center = Offset(size.width * 0.85f, size.height * 0.32f),
+                radius = size.minDimension * 0.70f
+            )
+        )
     }
 }
 
@@ -633,6 +626,9 @@ private fun DashboardHeader(
     monitoringEnabled: Boolean,
     onToggleMonitoring: (Boolean) -> Unit
 ) {
+    val onBackground = MaterialTheme.colorScheme.onBackground
+    val secondary = MaterialTheme.colorScheme.onSurfaceVariant
+    val accent = MaterialTheme.colorScheme.primary
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -642,15 +638,15 @@ private fun DashboardHeader(
     ) {
         Column {
             Text(
-                text = "Eye Diary",
-                fontSize = 30.sp,
-                fontWeight = FontWeight.Black,
-                color = Color.White
+                text = "眼睛健康概覽",
+                fontSize = 26.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = onBackground
             )
             Text(
                 text = "護眼監測與趨勢",
                 fontSize = 14.sp,
-                color = Color.White.copy(alpha = 0.72f)
+                color = secondary
             )
         }
 
@@ -659,7 +655,7 @@ private fun DashboardHeader(
                 text = if (monitoringEnabled) "監測中" else "已暫停",
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
-                color = if (monitoringEnabled) Color(0xFF47F1B5) else Color.White.copy(alpha = 0.75f)
+                color = if (monitoringEnabled) accent else secondary
             )
             Switch(
                 checked = monitoringEnabled,
@@ -716,13 +712,13 @@ private fun SetupCard(
                 text = title,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.ExtraBold,
-                color = Color.White
+                color = MaterialTheme.colorScheme.onSurface
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = subtitle,
                 fontSize = 13.sp,
-                color = Color.White.copy(alpha = 0.72f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 lineHeight = 18.sp
             )
 
@@ -742,19 +738,21 @@ private fun SetupCard(
 @Composable
 private fun EyeExerciseCard(onOpenEyeExercise: (() -> Unit)?) {
     if (onOpenEyeExercise == null) return
+    val onSurface = MaterialTheme.colorScheme.onSurface
+    val secondary = MaterialTheme.colorScheme.onSurfaceVariant
     GlassCard {
         Column(modifier = Modifier.fillMaxWidth()) {
             Text(
                 text = "眼睛體操",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.ExtraBold,
-                color = Color.White
+                color = onSurface
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = "立即啟動懸浮窗體操（之後也會支援超時自動跳出）。",
                 fontSize = 13.sp,
-                color = Color.White.copy(alpha = 0.72f),
+                color = secondary,
                 lineHeight = 18.sp
             )
             Spacer(modifier = Modifier.height(12.dp))
@@ -846,6 +844,9 @@ private fun MetricTile(
     accent: Color,
     trend: List<Float>
 ) {
+    val onSurface = MaterialTheme.colorScheme.onSurface
+    val secondary = MaterialTheme.colorScheme.onSurfaceVariant
+    val danger = MaterialTheme.colorScheme.error
     GlassCard(modifier = modifier) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
@@ -857,7 +858,7 @@ private fun MetricTile(
                     text = title,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White.copy(alpha = 0.78f)
+                    color = secondary
                 )
                 StatusDot(active = warning, accent = accent)
             }
@@ -867,18 +868,18 @@ private fun MetricTile(
                 text = value,
                 fontSize = 30.sp,
                 fontWeight = FontWeight.Black,
-                color = if (warning) Color(0xFFFF5C6C) else Color.White
+                color = if (warning) danger else onSurface
             )
             Text(
                 text = unit,
                 fontSize = 12.sp,
-                color = Color.White.copy(alpha = 0.62f)
+                color = secondary
             )
 
             Spacer(modifier = Modifier.height(10.dp))
             Sparkline(
                 values = trend,
-                color = if (warning) Color(0xFFFF5C6C) else accent,
+                color = if (warning) danger else accent,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(44.dp)
@@ -889,7 +890,7 @@ private fun MetricTile(
                 Text(
                     text = hint,
                     fontSize = 12.sp,
-                    color = Color.White.copy(alpha = 0.62f)
+                    color = secondary
                 )
             }
         }
@@ -905,6 +906,8 @@ private fun HistoryChartCard(
     postureTrend: List<Float>,
     lyingTrend: List<Float>
 ) {
+    val onSurface = MaterialTheme.colorScheme.onSurface
+    val secondary = MaterialTheme.colorScheme.onSurfaceVariant
     val (values, accent) = when (selected) {
         HistoryMetric.DISTANCE -> distanceTrend to Color(0xFF47F1B5)
         HistoryMetric.EYE_OPEN -> eyeTrend to Color(0xFF6EE7FF)
@@ -923,12 +926,12 @@ private fun HistoryChartCard(
                     text = "歷史圖表",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    color = Color.White
+                    color = onSurface
                 )
                 Text(
                     text = "最近 ${min(values.size, HISTORY_MAX_POINTS)} 點",
                     fontSize = 12.sp,
-                    color = Color.White.copy(alpha = 0.6f)
+                    color = secondary
                 )
             }
 
@@ -950,7 +953,7 @@ private fun HistoryChartCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(140.dp)
-                    .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(16.dp))
+                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
                     .padding(10.dp)
             )
         }
@@ -996,7 +999,7 @@ private fun Sparkline(values: List<Float>, color: Color, modifier: Modifier = Mo
 
         // Subtle baseline.
         drawLine(
-            color = Color.White.copy(alpha = 0.06f),
+            color = Color.Black.copy(alpha = 0.06f),
             start = Offset(0f, size.height),
             end = Offset(size.width, size.height),
             strokeWidth = 1f
@@ -1015,8 +1018,9 @@ private fun GlassCard(modifier: Modifier = Modifier, content: @Composable Column
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.06f)),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.75f))
     ) {
         Column(modifier = Modifier.padding(16.dp), content = content)
     }
@@ -1024,7 +1028,7 @@ private fun GlassCard(modifier: Modifier = Modifier, content: @Composable Column
 
 @Composable
 private fun StatusDot(active: Boolean, accent: Color) {
-    val dotColor = if (active) Color(0xFFFF5C6C) else accent.copy(alpha = 0.7f)
+    val dotColor = if (active) MaterialTheme.colorScheme.error else accent.copy(alpha = 0.75f)
     Box(
         modifier = Modifier
             .size(10.dp)
@@ -1039,8 +1043,8 @@ private fun PrimaryPillButton(text: String, onClick: () -> Unit) {
         onClick = onClick,
         shape = RoundedCornerShape(999.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = Color(0xFF47F1B5),
-            contentColor = Color(0xFF06201A)
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary
         ),
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
     ) {
@@ -1053,8 +1057,8 @@ private fun SecondaryPillButton(text: String, onClick: () -> Unit) {
     OutlinedButton(
         onClick = onClick,
         shape = RoundedCornerShape(999.dp),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
     ) {
         Text(text = text, fontWeight = FontWeight.Bold)
