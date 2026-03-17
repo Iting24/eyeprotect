@@ -42,6 +42,9 @@ class DashboardFragment : Fragment() {
                             com.example.eyeprotect.R.id.settingsFragment,
                             bundleOf("openCalibration" to true)
                         )
+                    },
+                    onOpenEyeExercise = {
+                        findNavController().navigate(com.example.eyeprotect.R.id.eyeExerciseFragment)
                     }
                 )
             }
@@ -50,7 +53,10 @@ class DashboardFragment : Fragment() {
 }
 
 @Composable
-private fun DashboardRoute(onReCalibrate: () -> Unit) {
+private fun DashboardRoute(
+    onReCalibrate: () -> Unit,
+    onOpenEyeExercise: () -> Unit
+) {
     EyeprotectTheme(darkTheme = true) {
         Surface(modifier = Modifier.fillMaxSize()) {
             val context = androidx.compose.ui.platform.LocalContext.current
@@ -82,7 +88,8 @@ private fun DashboardRoute(onReCalibrate: () -> Unit) {
                 hasCameraPermission = hasCameraPermission,
                 hasCalibrated = hasCalibrated,
                 onRequestPermission = { hasCameraPermission = true },
-                onReCalibrate = onReCalibrate
+                onReCalibrate = onReCalibrate,
+                onOpenEyeExercise = onOpenEyeExercise
             )
         }
     }

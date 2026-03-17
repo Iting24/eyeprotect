@@ -8,12 +8,12 @@
     <string name="nav_dashboard">首頁</string>
     <string name="nav_vision_tool">視覺工具</string>
     <string name="nav_eye_exercise">眼球體操</string>
-    <string name="nav_settings">設定</string>
+    <string name="nav_settings">護眼設定</string>
 
     <string name="title_dashboard">首頁</string>
     <string name="title_vision_tool">視覺工具</string>
     <string name="title_eye_exercise">眼球體操</string>
-    <string name="title_settings">設定／校準</string>
+    <string name="title_settings">護眼設定</string>
 
     <string name="vision_tool_subtitle">色盲 AR 辨識（相機）</string>
     <string name="vision_tool_permission_granted">相機權限已授權，這裡可以放入 Preview + AR 辨識流程。</string>
@@ -25,4 +25,19 @@
 
     <string name="settings_subtitle">個人姿勢基準校準、參數調整</string>
     <string name="start_calibration">開始校準</string>
+
+    <string name="eye_settings_section_calibration">個人校準</string>
+    <string name="eye_settings_section_features">護眼功能</string>
+
+    <string name="eye_settings_eye_exercise_title">超時強制眼睛體操（預留）</string>
+    <string name="eye_settings_eye_exercise_desc">當使用時間超過門檻時，以懸浮窗覆蓋目前 App 提醒並引導體操。</string>
+
+    <string name="eye_settings_walk_detection_title">GPS + 陀螺儀走路偵測（預留）</string>
+    <string name="eye_settings_walk_detection_desc">偵測走路時滑手機並提醒（先保留開關，後續再補實作）。</string>
+
+    <string name="eye_settings_auto_night_title">自動夜間護眼模式（預留）</string>
+    <string name="eye_settings_auto_night_desc">依環境光或疲勞程度自動調整顯示（先保留開關）。</string>
+
+    <string name="eye_settings_overlay_permission_hint">需要「在其他應用程式上層顯示」權限。</string>
+    <string name="eye_settings_open_overlay_permission">前往開啟懸浮窗權限</string>
 </resources>

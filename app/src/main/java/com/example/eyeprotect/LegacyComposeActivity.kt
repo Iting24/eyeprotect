@@ -416,7 +416,8 @@ fun DashboardScreen(
     hasCameraPermission: Boolean,
     hasCalibrated: Boolean,
     onRequestPermission: (() -> Unit)? = null,
-    onReCalibrate: (() -> Unit)? = null
+    onReCalibrate: (() -> Unit)? = null,
+    onOpenEyeExercise: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("eyeprotect_prefs", Context.MODE_PRIVATE) }
@@ -546,6 +547,8 @@ fun DashboardScreen(
                 },
                 onReCalibrate = onReCalibrate
             )
+
+            EyeExerciseCard(onOpenEyeExercise = onOpenEyeExercise)
 
             MetricGrid(
                 irisNorm = irisNorm,
@@ -731,6 +734,32 @@ private fun SetupCard(
                 if (hasCameraPermission && onReCalibrate != null) {
                     SecondaryPillButton(text = "重新校正", onClick = onReCalibrate)
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EyeExerciseCard(onOpenEyeExercise: (() -> Unit)?) {
+    if (onOpenEyeExercise == null) return
+    GlassCard {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = "眼睛體操",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color.White
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "立即啟動懸浮窗體操（之後也會支援超時自動跳出）。",
+                fontSize = 13.sp,
+                color = Color.White.copy(alpha = 0.72f),
+                lineHeight = 18.sp
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PrimaryPillButton(text = "立即開始", onClick = onOpenEyeExercise)
             }
         }
     }

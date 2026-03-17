@@ -9,10 +9,6 @@
         android:icon="@drawable/ic_nav_vision"
         android:title="@string/nav_vision_tool" />
     <item
-        android:id="@+id/eyeExerciseFragment"
-        android:icon="@drawable/ic_nav_exercise"
-        android:title="@string/nav_eye_exercise" />
-    <item
         android:id="@+id/settingsFragment"
         android:icon="@drawable/ic_nav_settings"
         android:title="@string/nav_settings" />
