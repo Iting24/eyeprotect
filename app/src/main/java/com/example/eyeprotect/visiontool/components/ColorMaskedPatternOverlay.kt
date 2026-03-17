@@ -1,0 +1,161 @@
+﻿package com.example.eyeprotect.visiontool.components
+
+import android.graphics.Bitmap
+import android.graphics.Matrix
+import androidx.camera.view.PreviewView
+import androidx.compose.foundation.Canvas
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import com.example.eyeprotect.visiontool.viewmodel.AssistMode
+import com.example.eyeprotect.visiontool.viewmodel.MaskTransform
+
+@Composable
+fun ColorMaskedPatternOverlay(
+    modifier: Modifier = Modifier,
+    maskBitmap: Bitmap?,
+    mode: AssistMode,
+    patternAlpha: Float,
+    patternColor: Color,
+    previewView: PreviewView?,
+    maskTransform: MaskTransform?
+) {
+    val maskImage = remember(maskBitmap) { maskBitmap?.asImageBitmap() }
+
+    Canvas(modifier = modifier) {
+        if (mode == AssistMode.NONE) return@Canvas
+
+        if (mode == AssistMode.ALL && maskImage == null) {
+            drawPattern(mode, patternAlpha, patternColor, BlendMode.SrcOver)
+            return@Canvas
+        }
+
+        val rect = Rect(0f, 0f, size.width, size.height)
+        val paint = Paint()
+
+        drawIntoCanvas { canvas ->
+            canvas.saveLayer(rect, paint)
+
+            if (maskBitmap != null && maskTransform != null) {
+                val native = canvas.nativeCanvas
+                val m = Matrix(maskTransform.matrix)
+
+                val scaleX = maskTransform.imageWidth.toFloat() / maskBitmap.width.toFloat()
+                val scaleY = maskTransform.imageHeight.toFloat() / maskBitmap.height.toFloat()
+                m.preScale(scaleX, scaleY)
+
+                native.save()
+                native.concat(m)
+                native.drawBitmap(maskBitmap, 0f, 0f, null)
+                native.restore()
+            } else if (maskImage != null) {
+                drawImage(maskImage)
+            }
+
+            // Pattern will be clipped by the mask with SrcIn.
+            drawPattern(mode, patternAlpha, patternColor, BlendMode.SrcIn)
+
+            canvas.restore()
+        }
+    }
+}
+
+private fun DrawScope.drawPattern(
+    mode: AssistMode,
+    alpha: Float,
+    color: Color,
+    blendMode: BlendMode
+) {
+    val paintColor = color.copy(alpha = alpha)
+    val w = size.width
+    val h = size.height
+
+    when (mode) {
+        AssistMode.RED -> {
+            val gap = 40f
+            var x = -h
+            while (x < w) {
+                drawLine(
+                    color = paintColor,
+                    start = Offset(x, 0f),
+                    end = Offset(x + h, h),
+                    strokeWidth = 6f,
+                    blendMode = blendMode
+                )
+                x += gap
+            }
+        }
+        AssistMode.GREEN -> {
+            val gap = 48f
+            var x = 0f
+            while (x < w) {
+                drawLine(
+                    color = paintColor,
+                    start = Offset(x, 0f),
+                    end = Offset(x, h),
+                    strokeWidth = 4f,
+                    blendMode = blendMode
+                )
+                x += gap
+            }
+            var y = 0f
+            while (y < h) {
+                drawLine(
+                    color = paintColor,
+                    start = Offset(0f, y),
+                    end = Offset(w, y),
+                    strokeWidth = 4f,
+                    blendMode = blendMode
+                )
+                y += gap
+            }
+        }
+        AssistMode.BLUE -> {
+            val gap = 36f
+            var y = 0f
+            while (y < h) {
+                var x = 0f
+                while (x < w) {
+                    drawCircle(
+                        color = paintColor,
+                        radius = 6f,
+                        center = Offset(x, y),
+                        blendMode = blendMode
+                    )
+                    x += gap
+                }
+                y += gap
+            }
+        }
+        AssistMode.YELLOW -> {
+            val gap = 50f
+            var y = 0f
+            while (y < h) {
+                var x = 0f
+                while (x < w) {
+                    drawLine(
+                        color = paintColor,
+                        start = Offset(x, y),
+                        end = Offset(x + 24f, y),
+                        strokeWidth = 6f,
+                        blendMode = blendMode
+                    )
+                    x += gap
+                }
+                y += gap
+            }
+        }
+        AssistMode.ALL, AssistMode.NONE -> {
+            // No-op
+        }
+    }
+}
