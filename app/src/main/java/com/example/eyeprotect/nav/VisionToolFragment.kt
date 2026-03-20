@@ -27,10 +27,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.example.eyeprotect.R
 import com.example.eyeprotect.ui.theme.EyeprotectTheme
+import com.example.eyeprotect.visiontool.screens.MainScreen
+import com.example.eyeprotect.visiontool.viewmodel.MainViewModel
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -65,26 +68,26 @@ private fun VisionToolScreen() {
         granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Text(stringResource(id = R.string.title_vision_tool), style = MaterialTheme.typography.headlineSmall)
-        Text(
-            text = stringResource(id = R.string.vision_tool_subtitle),
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-
-        if (!granted) {
+    if (granted) {
+        val viewModel: MainViewModel = viewModel()
+        MainScreen(viewModel = viewModel)
+    } else {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(stringResource(id = R.string.title_vision_tool), style = MaterialTheme.typography.headlineSmall)
+            Text(
+                text = stringResource(id = R.string.vision_tool_subtitle),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
             Button(onClick = {
                 launcher.launch(Manifest.permission.CAMERA)
             }) {
                 Text(stringResource(id = R.string.request_camera_permission))
             }
-        } else {
-            Text(stringResource(id = R.string.vision_tool_permission_granted))
         }
     }
 }
