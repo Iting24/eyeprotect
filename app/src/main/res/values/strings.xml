@@ -23,10 +23,10 @@
     <string name="eye_exercise_start">啟動體操</string>
     <string name="eye_exercise_timer">定時：%1$ds</string>
 
-    <string name="settings_subtitle">個人姿勢基準校準、參數調整</string>
-    <string name="start_calibration">開始校準</string>
+    <string name="settings_subtitle">個人姿勢基準校正、參數調整</string>
+    <string name="start_calibration">開始校正</string>
 
-    <string name="eye_settings_section_calibration">個人校準</string>
+    <string name="eye_settings_section_calibration">個人校正</string>
     <string name="eye_settings_section_features">護眼功能</string>
 
     <string name="eye_settings_eye_exercise_title">超時強制眼睛體操（預留）</string>

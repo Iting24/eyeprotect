@@ -36,6 +36,7 @@ android {
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
+    isCoreLibraryDesugaringEnabled = true
   }
 
   kotlinOptions {
@@ -90,4 +91,12 @@ dependencies {
   // hilt
   implementation(libs.hilt.android)
   ksp(libs.hilt.compiler)
+
+  // room
+  implementation(libs.androidx.room.runtime)
+  implementation(libs.androidx.room.ktx)
+  ksp(libs.androidx.room.compiler)
+
+  // java.time backport for minSdk < 26
+  coreLibraryDesugaring(libs.android.desugarJdkLibs)
 }

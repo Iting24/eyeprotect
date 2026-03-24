@@ -516,6 +516,22 @@ fun DashboardScreen(
     Box(modifier = modifier.fillMaxSize()) {
         GridBackdrop(modifier = Modifier.matchParentSize())
 
+        val setupReady = hasCameraPermission && hasCalibrated && isServiceEnabled
+        val statusLabel = when {
+            !setupReady -> "尚未完成設定"
+            monitoringEnabled -> "監測中"
+            else -> "已暫停"
+        }
+        val setMonitoringEnabled: (Boolean) -> Unit = { enabled ->
+            monitoringEnabled = enabled
+            prefs.edit().putBoolean(EyeHealthAccessibilityService.PREF_MONITORING_ENABLED, enabled).apply()
+            val intent = Intent(EyeHealthAccessibilityService.ACTION_SET_MONITORING).apply {
+                setPackage(context.packageName)
+                putExtra(EyeHealthAccessibilityService.EXTRA_MONITORING_ENABLED, enabled)
+            }
+            context.sendBroadcast(intent)
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -525,27 +541,23 @@ fun DashboardScreen(
         ) {
             DashboardHeader(
                 monitoringEnabled = monitoringEnabled,
-                onToggleMonitoring = { enabled ->
-                    monitoringEnabled = enabled
-                    prefs.edit().putBoolean(EyeHealthAccessibilityService.PREF_MONITORING_ENABLED, enabled).apply()
-                    val intent = Intent(EyeHealthAccessibilityService.ACTION_SET_MONITORING).apply {
-                        setPackage(context.packageName)
-                        putExtra(EyeHealthAccessibilityService.EXTRA_MONITORING_ENABLED, enabled)
-                    }
-                    context.sendBroadcast(intent)
-                }
+                toggleEnabled = setupReady,
+                statusLabel = statusLabel,
+                onToggleMonitoring = setMonitoringEnabled
             )
 
             SetupCard(
                 hasCameraPermission = hasCameraPermission,
                 hasCalibrated = hasCalibrated,
                 isServiceEnabled = isServiceEnabled,
+                monitoringEnabled = if (setupReady) monitoringEnabled else false,
                 onRequestCamera = { permissionLauncher.launch(Manifest.permission.CAMERA) },
+                onOpenCalibration = onReCalibrate,
                 onOpenAccessibilitySettings = {
                     val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                     context.startActivity(intent)
                 },
-                onReCalibrate = onReCalibrate
+                onEnableMonitoring = if (setupReady) ({ setMonitoringEnabled(true) }) else null
             )
 
             EyeExerciseCard(onOpenEyeExercise = onOpenEyeExercise)
@@ -624,6 +636,8 @@ private fun GridBackdrop(modifier: Modifier = Modifier) {
 @Composable
 private fun DashboardHeader(
     monitoringEnabled: Boolean,
+    toggleEnabled: Boolean,
+    statusLabel: String,
     onToggleMonitoring: (Boolean) -> Unit
 ) {
     val onBackground = MaterialTheme.colorScheme.onBackground
@@ -652,17 +666,26 @@ private fun DashboardHeader(
 
         Column(horizontalAlignment = Alignment.End) {
             Text(
-                text = if (monitoringEnabled) "監測中" else "已暫停",
+                text = statusLabel,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 color = if (monitoringEnabled) accent else secondary
             )
             Switch(
                 checked = monitoringEnabled,
-                onCheckedChange = onToggleMonitoring
+                onCheckedChange = onToggleMonitoring,
+                enabled = toggleEnabled
             )
         }
     }
+}
+
+private enum class SetupStep {
+    CAMERA,
+    CALIBRATION,
+    ACCESSIBILITY,
+    MONITORING,
+    DONE
 }
 
 @Composable
@@ -670,35 +693,51 @@ private fun SetupCard(
     hasCameraPermission: Boolean,
     hasCalibrated: Boolean,
     isServiceEnabled: Boolean,
+    monitoringEnabled: Boolean,
     onRequestCamera: () -> Unit,
+    onOpenCalibration: (() -> Unit)?,
     onOpenAccessibilitySettings: () -> Unit,
-    onReCalibrate: (() -> Unit)?
+    onEnableMonitoring: (() -> Unit)?
 ) {
     val title: String
     val subtitle: String
     val primaryLabel: String?
     val primaryAction: (() -> Unit)?
 
-    when {
-        !hasCameraPermission -> {
+    val currentStep = when {
+        !hasCameraPermission -> SetupStep.CAMERA
+        !hasCalibrated -> SetupStep.CALIBRATION
+        !isServiceEnabled -> SetupStep.ACCESSIBILITY
+        !monitoringEnabled -> SetupStep.MONITORING
+        else -> SetupStep.DONE
+    }
+
+    when (currentStep) {
+        SetupStep.CAMERA -> {
             title = "需要相機權限"
             subtitle = "我們用前鏡頭計算距離、咪眼與姿勢，指標才會開始更新。"
             primaryLabel = "授權相機"
             primaryAction = onRequestCamera
         }
-        !hasCalibrated -> {
-            title = "請先完成校正"
-            subtitle = "校正後才會啟用提醒與門檻值。"
-            primaryLabel = null
-            primaryAction = null
+        SetupStep.CALIBRATION -> {
+            title = "完成個人校正"
+            subtitle = "校正後才會啟用提醒與門檻值（約 10 秒）。"
+            primaryLabel = if (onOpenCalibration != null) "開始校正" else null
+            primaryAction = onOpenCalibration
         }
-        !isServiceEnabled -> {
+        SetupStep.ACCESSIBILITY -> {
             title = "開啟無障礙服務"
             subtitle = "開啟後才能在背景提醒你太近、咪眼、駝背或躺著滑。"
-            primaryLabel = "前往設定"
+            primaryLabel = "前往系統設定"
             primaryAction = onOpenAccessibilitySettings
         }
-        else -> {
+        SetupStep.MONITORING -> {
+            title = "開始監測"
+            subtitle = "開啟監測後，才會持續更新指標並用語音/震動提醒。"
+            primaryLabel = if (onEnableMonitoring != null) "開始監測" else null
+            primaryAction = onEnableMonitoring
+        }
+        SetupStep.DONE -> {
             title = "一切就緒"
             subtitle = "指標會持續更新；提醒會以語音與震動發出。"
             primaryLabel = null
@@ -722,16 +761,89 @@ private fun SetupCard(
                 lineHeight = 18.sp
             )
 
+            val step4Done = hasCameraPermission && hasCalibrated && isServiceEnabled && monitoringEnabled
+            Spacer(modifier = Modifier.height(12.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SetupStepRow(
+                    index = 1,
+                    label = "授權相機",
+                    done = hasCameraPermission,
+                    isCurrent = currentStep == SetupStep.CAMERA
+                )
+                SetupStepRow(
+                    index = 2,
+                    label = "完成校正",
+                    done = hasCalibrated,
+                    isCurrent = currentStep == SetupStep.CALIBRATION
+                )
+                SetupStepRow(
+                    index = 3,
+                    label = "開啟無障礙服務",
+                    done = isServiceEnabled,
+                    isCurrent = currentStep == SetupStep.ACCESSIBILITY
+                )
+                SetupStepRow(
+                    index = 4,
+                    label = "開始監測",
+                    done = step4Done,
+                    isCurrent = currentStep == SetupStep.MONITORING
+                )
+            }
+
             Spacer(modifier = Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (primaryLabel != null && primaryAction != null) {
                     PrimaryPillButton(text = primaryLabel, onClick = primaryAction)
                 }
-                if (hasCameraPermission && onReCalibrate != null) {
-                    SecondaryPillButton(text = "重新校正", onClick = onReCalibrate)
+                if (hasCalibrated && onOpenCalibration != null) {
+                    SecondaryPillButton(text = "重新校正", onClick = onOpenCalibration)
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SetupStepRow(
+    index: Int,
+    label: String,
+    done: Boolean,
+    isCurrent: Boolean
+) {
+    val badgeBg = when {
+        done -> MaterialTheme.colorScheme.primary
+        isCurrent -> MaterialTheme.colorScheme.secondaryContainer
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    val badgeFg = when {
+        done -> MaterialTheme.colorScheme.onPrimary
+        isCurrent -> MaterialTheme.colorScheme.onSecondaryContainer
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val textColor = if (done) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(22.dp)
+                .clip(CircleShape)
+                .background(badgeBg),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = if (done) "✓" else index.toString(),
+                color = badgeFg,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Black
+            )
+        }
+        Spacer(modifier = Modifier.width(10.dp))
+        Text(
+            text = label,
+            color = textColor,
+            fontSize = 13.sp,
+            fontWeight = if (isCurrent && !done) FontWeight.Bold else FontWeight.Normal
+        )
     }
 }
 

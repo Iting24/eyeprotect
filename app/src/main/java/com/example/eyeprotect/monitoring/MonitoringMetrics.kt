@@ -3,6 +3,8 @@ package com.example.eyeprotect.monitoring
 data class MonitoringMetrics(
     val ts: Long = 0L,
     val warningsMask: Int = 0,
+    val isLyingActive: Boolean = false,
+    val lastFaceDetectedTime: Long = 0L,
     val irisNorm: Float? = null,
     val eyeOpenMin: Float? = null,
     val slouchScore: Float? = null,
@@ -15,4 +17,3 @@ data class MonitoringUiState(
     val isRunning: Boolean = false,
     val metrics: MonitoringMetrics = MonitoringMetrics()
 )
-

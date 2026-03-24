@@ -202,6 +202,8 @@ class DetectorManager(
             MonitoringMetrics(
                 ts = now,
                 warningsMask = lyingBit,
+                isLyingActive = isLyingActive,
+                lastFaceDetectedTime = lastFaceSeenTimestamp,
                 pitchDeg = if (!lastPitchDegrees.isNaN()) lastPitchDegrees.toFloat() else null,
                 rollDeg = if (!lastRollDegrees.isNaN()) lastRollDegrees.toFloat() else null,
                 tiltDeg = if (!lastTiltDegrees.isNaN()) lastTiltDegrees.toFloat() else null
@@ -300,6 +302,8 @@ class DetectorManager(
                 MonitoringMetrics(
                     ts = SystemClock.uptimeMillis(),
                     warningsMask = warningsMask,
+                    isLyingActive = isLyingActive,
+                    lastFaceDetectedTime = lastFaceSeenTimestamp,
                     irisNorm = irisNorm,
                     eyeOpenMin = eyeOpenMin,
                     slouchScore = slouchScore,
