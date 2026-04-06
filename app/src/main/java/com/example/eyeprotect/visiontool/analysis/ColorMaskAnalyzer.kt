@@ -1,4 +1,4 @@
-package com.example.eyeprotect.visiontool.analysis
+﻿package com.example.eyeprotect.visiontool.analysis
 
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -8,6 +8,7 @@ import com.example.eyeprotect.visiontool.viewmodel.AssistMode
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.max
+import kotlin.math.min
 
 /**
  * Lightweight HSV color mask analyzer.
@@ -75,7 +76,7 @@ class ColorMaskAnalyzer(
                     val b = getByteAsInt(buffer, offset + 2)
 
                     Color.RGBToHSV(r, g, b, hsv)
-                    val matched = isTargetColor(hsv, mode)
+                    val matched = isTargetColor(hsv, mode, r, g, b)
                     srcMask[y * maskW + x] = matched
                 }
             }
@@ -132,20 +133,45 @@ class ColorMaskAnalyzer(
         return buffer.get(index).toInt() and 0xFF
     }
 
-    private fun isTargetColor(hsv: FloatArray, mode: AssistMode): Boolean {
+    private fun isTargetColor(hsv: FloatArray, mode: AssistMode, r: Int, g: Int, b: Int): Boolean {
         val h = hsv[0]
         val s = hsv[1]
         val v = hsv[2]
 
-        val minS = if (mode == AssistMode.YELLOW) 0.45f else 0.35f
-        val minV = if (mode == AssistMode.YELLOW) 0.45f else 0.35f
+        val minS = when (mode) {
+            AssistMode.YELLOW -> 0.38f
+            AssistMode.GREEN -> 0.25f
+            AssistMode.RED -> 0.30f
+            AssistMode.BLUE -> 0.18f
+            else -> 0.35f
+        }
+        val minV = when (mode) {
+            AssistMode.YELLOW -> 0.38f
+            AssistMode.GREEN -> 0.25f
+            AssistMode.RED -> 0.30f
+            AssistMode.BLUE -> 0.18f
+            else -> 0.35f
+        }
         if (s < minS || v < minV) return false
 
+        val rgbDominant = when (mode) {
+            AssistMode.RED -> r >= 110 && r - max(g, b) >= 35
+            AssistMode.BLUE -> b >= 110 && b - max(r, g) >= 30
+            AssistMode.YELLOW -> {
+                val minRG = min(r, g)
+                val rgBalanced = kotlin.math.abs(r - g) <= 35
+                val blueLow = b <= 100
+                minRG >= 130 && rgBalanced && blueLow
+            }
+            else -> true
+        }
+        if (!rgbDominant) return false
+
         return when (mode) {
-            AssistMode.YELLOW -> isInRange(h, 48f, 65f)
-            AssistMode.RED -> isInRange(h, 0f, 10f) || isInRange(h, 350f, 360f)
-            AssistMode.GREEN -> isInRange(h, 80f, 150f)
-            AssistMode.BLUE -> isInRange(h, 190f, 250f)
+            AssistMode.YELLOW -> isInRange(h, 48f, 64f)
+            AssistMode.RED -> isInRange(h, 0f, 18f) || isInRange(h, 330f, 360f)
+            AssistMode.GREEN -> isInRange(h, 60f, 165f)
+            AssistMode.BLUE -> isInRange(h, 150f, 275f)
             AssistMode.ALL -> true
             AssistMode.NONE -> false
         }

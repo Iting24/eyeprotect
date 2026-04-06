@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import com.example.eyeprotect.visiontool.viewmodel.AssistMode
@@ -27,44 +28,54 @@ fun ColorMaskedPatternOverlay(
     patternAlpha: Float,
     patternColor: Color,
     previewView: PreviewView?,
-    maskTransform: MaskTransform?
+    maskTransform: MaskTransform?,
+    roiSizePx: Float? = null
 ) {
     val maskImage = remember(maskBitmap) { maskBitmap?.asImageBitmap() }
 
     Canvas(modifier = modifier) {
+        val roi = roiSizePx
+        val hasRoi = roi != null && roi > 0f
+        val left = if (hasRoi) (size.width - roi) / 2f else 0f
+        val top = if (hasRoi) (size.height - roi) / 2f else 0f
+        val right = if (hasRoi) left + roi else size.width
+        val bottom = if (hasRoi) top + roi else size.height
+
         if (mode == AssistMode.NONE) return@Canvas
 
-        if (mode == AssistMode.ALL && maskImage == null) {
-            drawPattern(mode, patternAlpha, patternColor, BlendMode.SrcOver)
-            return@Canvas
-        }
-
-        val rect = Rect(0f, 0f, size.width, size.height)
-        val paint = Paint()
-
-        drawIntoCanvas { canvas ->
-            canvas.saveLayer(rect, paint)
-
-            if (maskBitmap != null && maskTransform != null) {
-                val native = canvas.nativeCanvas
-                val m = Matrix(maskTransform.matrix)
-
-                val scaleX = maskTransform.imageWidth.toFloat() / maskBitmap.width.toFloat()
-                val scaleY = maskTransform.imageHeight.toFloat() / maskBitmap.height.toFloat()
-                m.preScale(scaleX, scaleY)
-
-                native.save()
-                native.concat(m)
-                native.drawBitmap(maskBitmap, 0f, 0f, null)
-                native.restore()
-            } else if (maskImage != null) {
-                drawImage(maskImage)
+        clipRect(left, top, right, bottom) {
+            if (mode == AssistMode.ALL && maskImage == null) {
+                drawPattern(mode, patternAlpha, patternColor, BlendMode.SrcOver)
+                return@clipRect
             }
 
-            // Pattern will be clipped by the mask with SrcIn.
-            drawPattern(mode, patternAlpha, patternColor, BlendMode.SrcIn)
+            val rect = Rect(left, top, right, bottom)
+            val paint = Paint()
 
-            canvas.restore()
+            drawIntoCanvas { canvas ->
+                canvas.saveLayer(rect, paint)
+
+                if (maskBitmap != null && maskTransform != null) {
+                    val native = canvas.nativeCanvas
+                    val m = Matrix(maskTransform.matrix)
+
+                    val scaleX = maskTransform.imageWidth.toFloat() / maskBitmap.width.toFloat()
+                    val scaleY = maskTransform.imageHeight.toFloat() / maskBitmap.height.toFloat()
+                    m.preScale(scaleX, scaleY)
+
+                    native.save()
+                    native.concat(m)
+                    native.drawBitmap(maskBitmap, 0f, 0f, null)
+                    native.restore()
+                } else if (maskImage != null) {
+                    drawImage(maskImage)
+                }
+
+                // Pattern will be clipped by the mask with SrcIn.
+                drawPattern(mode, patternAlpha, patternColor, BlendMode.SrcIn)
+
+                canvas.restore()
+            }
         }
     }
 }
@@ -81,28 +92,28 @@ private fun DrawScope.drawPattern(
 
     when (mode) {
         AssistMode.RED -> {
-            val gap = 40f
+            val gap = 18f
             var x = -h
             while (x < w) {
                 drawLine(
                     color = paintColor,
                     start = Offset(x, 0f),
                     end = Offset(x + h, h),
-                    strokeWidth = 6f,
+                    strokeWidth = 8f,
                     blendMode = blendMode
                 )
                 x += gap
             }
         }
         AssistMode.GREEN -> {
-            val gap = 48f
+            val gap = 20f
             var x = 0f
             while (x < w) {
                 drawLine(
                     color = paintColor,
                     start = Offset(x, 0f),
                     end = Offset(x, h),
-                    strokeWidth = 4f,
+                    strokeWidth = 6f,
                     blendMode = blendMode
                 )
                 x += gap
@@ -113,21 +124,21 @@ private fun DrawScope.drawPattern(
                     color = paintColor,
                     start = Offset(0f, y),
                     end = Offset(w, y),
-                    strokeWidth = 4f,
+                    strokeWidth = 6f,
                     blendMode = blendMode
                 )
                 y += gap
             }
         }
         AssistMode.BLUE -> {
-            val gap = 36f
+            val gap = 16f
             var y = 0f
             while (y < h) {
                 var x = 0f
                 while (x < w) {
                     drawCircle(
                         color = paintColor,
-                        radius = 6f,
+                        radius = 8f,
                         center = Offset(x, y),
                         blendMode = blendMode
                     )
@@ -137,7 +148,7 @@ private fun DrawScope.drawPattern(
             }
         }
         AssistMode.YELLOW -> {
-            val gap = 50f
+            val gap = 22f
             var y = 0f
             while (y < h) {
                 var x = 0f
@@ -146,7 +157,7 @@ private fun DrawScope.drawPattern(
                         color = paintColor,
                         start = Offset(x, y),
                         end = Offset(x + 24f, y),
-                        strokeWidth = 6f,
+                        strokeWidth = 8f,
                         blendMode = blendMode
                     )
                     x += gap
@@ -159,3 +170,4 @@ private fun DrawScope.drawPattern(
         }
     }
 }
+
