@@ -7,6 +7,7 @@ import androidx.camera.core.ImageProxy
 import com.example.eyeprotect.visiontool.viewmodel.AssistMode
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
@@ -139,15 +140,15 @@ class ColorMaskAnalyzer(
         val v = hsv[2]
 
         val minS = when (mode) {
-            AssistMode.YELLOW -> 0.38f
-            AssistMode.GREEN -> 0.25f
+            AssistMode.YELLOW -> 0.28f
+            AssistMode.GREEN -> 0.20f
             AssistMode.RED -> 0.30f
             AssistMode.BLUE -> 0.18f
             else -> 0.35f
         }
         val minV = when (mode) {
-            AssistMode.YELLOW -> 0.38f
-            AssistMode.GREEN -> 0.25f
+            AssistMode.YELLOW -> 0.28f
+            AssistMode.GREEN -> 0.20f
             AssistMode.RED -> 0.30f
             AssistMode.BLUE -> 0.18f
             else -> 0.35f
@@ -157,21 +158,23 @@ class ColorMaskAnalyzer(
         val rgbDominant = when (mode) {
             AssistMode.RED -> r >= 110 && r - max(g, b) >= 35
             AssistMode.BLUE -> b >= 110 && b - max(r, g) >= 30
+            AssistMode.GREEN -> g >= 95 && g + 5 >= b && g >= r + 5
             AssistMode.YELLOW -> {
                 val minRG = min(r, g)
-                val rgBalanced = kotlin.math.abs(r - g) <= 35
-                val blueLow = b <= 100
-                minRG >= 130 && rgBalanced && blueLow
+                val rgBalanced = abs(r - g) <= 50
+                val blueLow = b <= 125
+                val redLeads = r >= g + 5
+                minRG >= 105 && rgBalanced && blueLow && redLeads
             }
             else -> true
         }
         if (!rgbDominant) return false
 
         return when (mode) {
-            AssistMode.YELLOW -> isInRange(h, 48f, 64f)
+            AssistMode.YELLOW -> isInRange(h, 43f, 60f)
             AssistMode.RED -> isInRange(h, 0f, 18f) || isInRange(h, 330f, 360f)
-            AssistMode.GREEN -> isInRange(h, 60f, 165f)
-            AssistMode.BLUE -> isInRange(h, 150f, 275f)
+            AssistMode.GREEN -> isInRange(h, 55f, 180f)
+            AssistMode.BLUE -> isInRange(h, 185f, 275f)
             AssistMode.ALL -> true
             AssistMode.NONE -> false
         }
