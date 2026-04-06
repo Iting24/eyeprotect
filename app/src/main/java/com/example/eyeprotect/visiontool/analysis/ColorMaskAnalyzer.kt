@@ -140,14 +140,14 @@ class ColorMaskAnalyzer(
         val v = hsv[2]
 
         val minS = when (mode) {
-            AssistMode.YELLOW -> 0.28f
+            AssistMode.YELLOW -> 0.18f
             AssistMode.GREEN -> 0.20f
             AssistMode.RED -> 0.30f
             AssistMode.BLUE -> 0.18f
             else -> 0.35f
         }
         val minV = when (mode) {
-            AssistMode.YELLOW -> 0.28f
+            AssistMode.YELLOW -> 0.18f
             AssistMode.GREEN -> 0.20f
             AssistMode.RED -> 0.30f
             AssistMode.BLUE -> 0.18f
@@ -161,17 +161,17 @@ class ColorMaskAnalyzer(
             AssistMode.GREEN -> g >= 95 && g + 5 >= b && g >= r + 5
             AssistMode.YELLOW -> {
                 val minRG = min(r, g)
-                val rgBalanced = abs(r - g) <= 50
-                val blueLow = b <= 125
-                val redLeads = r >= g + 5
-                minRG >= 105 && rgBalanced && blueLow && redLeads
+                val rgBalanced = abs(r - g) <= 70
+                val blueLow = b <= 160
+                val redLeads = if (h >= 55f) r >= g + 8 else true
+                minRG >= 80 && rgBalanced && blueLow && redLeads
             }
             else -> true
         }
         if (!rgbDominant) return false
 
         return when (mode) {
-            AssistMode.YELLOW -> isInRange(h, 43f, 60f)
+            AssistMode.YELLOW -> isInRange(h, 22f, 62f)
             AssistMode.RED -> isInRange(h, 0f, 18f) || isInRange(h, 330f, 360f)
             AssistMode.GREEN -> isInRange(h, 55f, 180f)
             AssistMode.BLUE -> isInRange(h, 185f, 275f)
@@ -184,3 +184,5 @@ class ColorMaskAnalyzer(
         return value >= min && value <= max
     }
 }
+
+
