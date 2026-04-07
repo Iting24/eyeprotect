@@ -26,16 +26,16 @@ class ColorMaskAnalyzer(
     private val blurThreshold: Int = 3
 ) : ImageAnalysis.Analyzer {
 
-    private val modeRef = AtomicReference(initialMode)
+    private val modesRef = AtomicReference<Set<AssistMode>>(setOf(initialMode))
 
-    fun setMode(mode: AssistMode) {
-        modeRef.set(mode)
+    fun setModes(modes: Set<AssistMode>) {
+        modesRef.set(modes)
     }
 
     override fun analyze(image: ImageProxy) {
         try {
-            val mode = modeRef.get()
-            if (mode == AssistMode.NONE) {
+            val modes = modesRef.get()
+            if (modes.isEmpty() || modes == setOf(AssistMode.NONE)) {
                 onMaskReady(null)
                 return
             }
@@ -53,18 +53,49 @@ class ColorMaskAnalyzer(
                 return
             }
 
-            if (mode == AssistMode.ALL) {
-                val full = Bitmap.createBitmap(maskW, maskH, Bitmap.Config.ARGB_8888)
-                full.eraseColor(0xFFFFFFFF.toInt())
-                onMaskReady(full)
-                return
-            }
-
             val rowStride = image.planes[0].rowStride
             val pixelStride = image.planes[0].pixelStride
 
             val hsv = FloatArray(3)
-            val srcMask = BooleanArray(maskW * maskH)
+            val total = maskW * maskH
+
+            var greenishCount = 0
+            var yellowishCount = 0
+
+            // Pre-pass: detect if green & yellow both appear in frame.
+            for (y in 0 until maskH) {
+                val srcY = crop.top + y * step
+                val rowOffset = srcY * rowStride
+                for (x in 0 until maskW) {
+                    val srcX = crop.left + x * step
+                    val offset = rowOffset + srcX * pixelStride
+                    val r = getByteAsInt(buffer, offset)
+                    val g = getByteAsInt(buffer, offset + 1)
+                    val b = getByteAsInt(buffer, offset + 2)
+
+                    Color.RGBToHSV(r, g, b, hsv)
+                    val h = hsv[0]
+                    val s = hsv[1]
+                    val v = hsv[2]
+
+                    if (s >= 0.22f && v >= 0.22f && isInRange(h, 65f, 165f)) {
+                        greenishCount++
+                    }
+                    if (s >= 0.18f && v >= 0.20f && isInRange(h, 40f, 60f)) {
+                        yellowishCount++
+                    }
+                }
+            }
+
+            val minHits = max(20, total / 100) // 1% of pixels, at least 20
+            val relaxGreenTowardYellow =
+                modes.contains(AssistMode.GREEN) &&
+                    modes.contains(AssistMode.YELLOW) &&
+                    greenishCount >= minHits &&
+                    yellowishCount >= minHits
+
+            val srcMask = BooleanArray(total)
+            val orderedModes = modes.sortedBy { modePriority(it) }
 
             for (y in 0 until maskH) {
                 val srcY = crop.top + y * step
@@ -77,7 +108,14 @@ class ColorMaskAnalyzer(
                     val b = getByteAsInt(buffer, offset + 2)
 
                     Color.RGBToHSV(r, g, b, hsv)
-                    val matched = isTargetColor(hsv, mode, r, g, b)
+                    var matched = false
+                    for (mode in orderedModes) {
+                        if (mode == AssistMode.NONE) continue
+                        if (isTargetColor(hsv, mode, r, g, b, relaxGreenTowardYellow)) {
+                            matched = true
+                            break
+                        }
+                    }
                     srcMask[y * maskW + x] = matched
                 }
             }
@@ -134,48 +172,104 @@ class ColorMaskAnalyzer(
         return buffer.get(index).toInt() and 0xFF
     }
 
-    private fun isTargetColor(hsv: FloatArray, mode: AssistMode, r: Int, g: Int, b: Int): Boolean {
+    private fun modePriority(mode: AssistMode): Int {
+        return when (mode) {
+            AssistMode.BROWN -> 0
+            AssistMode.ORANGE -> 1
+            AssistMode.YELLOW -> 2
+            AssistMode.GREEN -> 3
+            AssistMode.RED -> 4
+            AssistMode.BLUE -> 5
+            AssistMode.INDIGO -> 6
+            AssistMode.PURPLE -> 7
+            AssistMode.GRAY -> 8
+            AssistMode.NONE -> 9
+        }
+    }
+
+    private fun isTargetColor(
+        hsv: FloatArray,
+        mode: AssistMode,
+        r: Int,
+        g: Int,
+        b: Int,
+        relaxGreenTowardYellow: Boolean
+    ): Boolean {
         val h = hsv[0]
         val s = hsv[1]
         val v = hsv[2]
 
         val minS = when (mode) {
-            AssistMode.YELLOW -> 0.18f
-            AssistMode.GREEN -> 0.20f
-            AssistMode.RED -> 0.30f
-            AssistMode.BLUE -> 0.18f
-            else -> 0.35f
+            AssistMode.YELLOW -> 0.20f
+            AssistMode.GREEN -> 0.22f
+            AssistMode.RED -> 0.47f
+            AssistMode.BLUE -> 0.20f
+            AssistMode.ORANGE -> 0.38f
+            AssistMode.BROWN -> 0.18f
+            AssistMode.INDIGO -> 0.22f
+            AssistMode.PURPLE -> 0.18f
+            AssistMode.GRAY -> 0.06f
+            AssistMode.NONE -> 0.35f
         }
         val minV = when (mode) {
-            AssistMode.YELLOW -> 0.18f
-            AssistMode.GREEN -> 0.20f
-            AssistMode.RED -> 0.30f
-            AssistMode.BLUE -> 0.18f
-            else -> 0.35f
+            AssistMode.YELLOW -> 0.20f
+            AssistMode.GREEN -> 0.22f
+            AssistMode.RED -> 0.47f
+            AssistMode.BLUE -> 0.20f
+            AssistMode.ORANGE -> 0.45f
+            AssistMode.BROWN -> 0.15f
+            AssistMode.INDIGO -> 0.20f
+            AssistMode.PURPLE -> 0.18f
+            AssistMode.GRAY -> 0.10f
+            AssistMode.NONE -> 0.35f
         }
         if (s < minS || v < minV) return false
 
         val rgbDominant = when (mode) {
-            AssistMode.RED -> r >= 110 && r - max(g, b) >= 35
-            AssistMode.BLUE -> b >= 110 && b - max(r, g) >= 30
-            AssistMode.GREEN -> g >= 95 && g + 5 >= b && g >= r + 5
+            AssistMode.RED -> r >= 165 && r - max(g, b) >= 62 && v >= 0.58f
+            AssistMode.BLUE -> b >= 120 && b - max(r, g) >= 40
+            AssistMode.GREEN -> g >= 100 && g >= r + 5 && g + 5 >= b
             AssistMode.YELLOW -> {
                 val minRG = min(r, g)
-                val rgBalanced = abs(r - g) <= 70
-                val blueLow = b <= 160
-                val redLeads = if (h >= 55f) r >= g + 8 else true
-                minRG >= 80 && rgBalanced && blueLow && redLeads
+                val rgBalanced = abs(r - g) <= 50
+                val blueLow = b <= 140
+                val redLeads = r >= g
+                minRG >= 115 && rgBalanced && blueLow && redLeads
             }
-            else -> true
+            AssistMode.ORANGE -> {
+                val minRG = min(r, g)
+                val redLeads = r >= g + 30
+                val blueLow = b <= 110
+                val bright = v >= 0.55f
+                minRG >= 155 && redLeads && blueLow && bright
+            }
+            AssistMode.BROWN -> {
+                val minRG = min(r, g)
+                val redLeads = r >= g + 5
+                val blueLow = b <= 100
+                val lowV = v <= 0.85f
+                minRG >= 60 && redLeads && blueLow && lowV
+            }
+            AssistMode.INDIGO -> b >= 90 && r <= 120 && g <= 120
+            AssistMode.PURPLE -> r >= 85 && b >= 85 && g <= 175
+            AssistMode.GRAY -> abs(r - g) <= 12 && abs(g - b) <= 12
+            AssistMode.NONE -> true
         }
         if (!rgbDominant) return false
 
         return when (mode) {
-            AssistMode.YELLOW -> isInRange(h, 22f, 62f)
-            AssistMode.RED -> isInRange(h, 0f, 18f) || isInRange(h, 330f, 360f)
-            AssistMode.GREEN -> isInRange(h, 55f, 180f)
-            AssistMode.BLUE -> isInRange(h, 185f, 275f)
-            AssistMode.ALL -> true
+            AssistMode.YELLOW -> isInRange(h, 43f, 55f)
+            AssistMode.GREEN -> {
+                val minHue = if (relaxGreenTowardYellow) 62f else 68f
+                isInRange(h, minHue, 165f)
+            }
+            AssistMode.RED -> isInRange(h, 0f, 10f) || isInRange(h, 350f, 360f)
+            AssistMode.BLUE -> isInRange(h, 200f, 235f)
+            AssistMode.ORANGE -> isInRange(h, 27f, 37f)
+            AssistMode.BROWN -> isInRange(h, 15f, 27f)
+            AssistMode.INDIGO -> isInRange(h, 235f, 265f)
+            AssistMode.PURPLE -> isInRange(h, 250f, 300f)
+            AssistMode.GRAY -> s <= 0.10f
             AssistMode.NONE -> false
         }
     }
@@ -184,5 +278,9 @@ class ColorMaskAnalyzer(
         return value >= min && value <= max
     }
 }
+
+
+
+
 
 

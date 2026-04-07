@@ -44,12 +44,7 @@ fun ColorMaskedPatternOverlay(
         if (mode == AssistMode.NONE) return@Canvas
 
         clipRect(left, top, right, bottom) {
-            if (mode == AssistMode.ALL && maskImage == null) {
-                drawPattern(mode, patternAlpha, patternColor, BlendMode.SrcOver)
-                return@clipRect
-            }
-
-            val rect = Rect(left, top, right, bottom)
+                        val rect = Rect(left, top, right, bottom)
             val paint = Paint()
 
             drawIntoCanvas { canvas ->
@@ -92,28 +87,28 @@ private fun DrawScope.drawPattern(
 
     when (mode) {
         AssistMode.RED -> {
-            val gap = 18f
+            val gap = 14f
             var x = -h
             while (x < w) {
                 drawLine(
                     color = paintColor,
                     start = Offset(x, 0f),
                     end = Offset(x + h, h),
-                    strokeWidth = 8f,
+                    strokeWidth = 9f,
                     blendMode = blendMode
                 )
                 x += gap
             }
         }
-        AssistMode.GREEN -> {
-            val gap = 20f
+        AssistMode.GREEN, AssistMode.GRAY -> {
+            val gap = 12f
             var x = 0f
             while (x < w) {
                 drawLine(
                     color = paintColor,
                     start = Offset(x, 0f),
                     end = Offset(x, h),
-                    strokeWidth = 6f,
+                    strokeWidth = 5f,
                     blendMode = blendMode
                 )
                 x += gap
@@ -124,21 +119,21 @@ private fun DrawScope.drawPattern(
                     color = paintColor,
                     start = Offset(0f, y),
                     end = Offset(w, y),
-                    strokeWidth = 6f,
+                    strokeWidth = 5f,
                     blendMode = blendMode
                 )
                 y += gap
             }
         }
-        AssistMode.BLUE -> {
-            val gap = 16f
+        AssistMode.BLUE, AssistMode.INDIGO, AssistMode.PURPLE -> {
+            val gap = 12f
             var y = 0f
             while (y < h) {
                 var x = 0f
                 while (x < w) {
                     drawCircle(
                         color = paintColor,
-                        radius = 8f,
+                        radius = 9f,
                         center = Offset(x, y),
                         blendMode = blendMode
                     )
@@ -147,8 +142,8 @@ private fun DrawScope.drawPattern(
                 y += gap
             }
         }
-        AssistMode.YELLOW -> {
-            val gap = 22f
+        AssistMode.YELLOW, AssistMode.ORANGE, AssistMode.BROWN -> {
+            val gap = 18f
             var y = 0f
             while (y < h) {
                 var x = 0f
@@ -157,7 +152,7 @@ private fun DrawScope.drawPattern(
                         color = paintColor,
                         start = Offset(x, y),
                         end = Offset(x + 24f, y),
-                        strokeWidth = 8f,
+                        strokeWidth = 9f,
                         blendMode = blendMode
                     )
                     x += gap
@@ -165,9 +160,13 @@ private fun DrawScope.drawPattern(
                 y += gap
             }
         }
-        AssistMode.ALL, AssistMode.NONE -> {
+        AssistMode.NONE -> {
             // No-op
         }
     }
 }
+
+
+
+
 

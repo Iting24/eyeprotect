@@ -44,7 +44,7 @@ import com.example.eyeprotect.visiontool.viewmodel.MainViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(viewModel: MainViewModel) {
-    val currentMode by viewModel.currentMode.collectAsState()
+    val selectedModes by viewModel.selectedModes.collectAsState()
     val alpha by viewModel.textureAlpha.collectAsState()
     val maskBitmap by viewModel.maskBitmap.collectAsState()
     val maskTransform by viewModel.maskTransform.collectAsState()
@@ -52,16 +52,23 @@ fun MainScreen(viewModel: MainViewModel) {
     var previewView by remember { mutableStateOf<PreviewView?>(null) }
     val roiSizePx = with(LocalDensity.current) { 250.dp.toPx() }
 
-    val activeColor = when (currentMode) {
+    val activeMode = selectedModes.firstOrNull { it != AssistMode.NONE } ?: AssistMode.NONE
+    val hasMultiple = selectedModes.count { it != AssistMode.NONE } > 1
+
+    val activeColor = when (activeMode) {
         AssistMode.RED -> Color(0xFFE53935)
         AssistMode.GREEN -> Color(0xFF43A047)
         AssistMode.BLUE -> Color(0xFF1E88E5)
         AssistMode.YELLOW -> Color(0xFFFDD835)
-        AssistMode.ALL -> MaterialTheme.colorScheme.primary
+        AssistMode.ORANGE -> Color(0xFFF28C28)
+        AssistMode.BROWN -> Color(0xFF8D6E63)
+        AssistMode.INDIGO -> Color(0xFF3949AB)
+        AssistMode.PURPLE -> Color(0xFF8E24AA)
+        AssistMode.GRAY -> Color(0xFF757575)
         AssistMode.NONE -> MaterialTheme.colorScheme.outline
     }
 
-    val patternColor = if (currentMode == AssistMode.BLUE || currentMode == AssistMode.YELLOW) {
+    val patternColor = if (hasMultiple || activeMode == AssistMode.BLUE || activeMode == AssistMode.YELLOW || activeMode == AssistMode.GREEN || activeMode == AssistMode.GRAY || activeMode == AssistMode.RED || activeMode == AssistMode.INDIGO || activeMode == AssistMode.PURPLE) {
         MaterialTheme.colorScheme.onSurface
     } else {
         activeColor
@@ -69,16 +76,16 @@ fun MainScreen(viewModel: MainViewModel) {
 
     val analyzer = remember {
         ColorMaskAnalyzer(
-            initialMode = currentMode,
+            initialMode = AssistMode.NONE,
             onMaskReady = { viewModel.setMaskBitmap(it) },
             downscaleStep = 2,
-            blurPasses = 1,
+            blurPasses = 0,
             blurThreshold = 4
         )
     }
 
-    LaunchedEffect(currentMode) {
-        analyzer.setMode(currentMode)
+    LaunchedEffect(selectedModes) {
+        analyzer.setModes(selectedModes)
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -92,7 +99,7 @@ fun MainScreen(viewModel: MainViewModel) {
         ColorMaskedPatternOverlay(
             modifier = Modifier.fillMaxSize(),
             maskBitmap = maskBitmap,
-            mode = currentMode,
+            mode = activeMode,
             patternAlpha = alpha,
             patternColor = patternColor,
             previewView = previewView,
@@ -150,11 +157,11 @@ fun MainScreen(viewModel: MainViewModel) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                items(AssistMode.values()) { mode ->
-                    val isSelected = currentMode == mode
+                items(listOf(AssistMode.RED, AssistMode.ORANGE, AssistMode.YELLOW, AssistMode.GREEN, AssistMode.BLUE, AssistMode.INDIGO, AssistMode.PURPLE, AssistMode.GRAY, AssistMode.BROWN, AssistMode.NONE)) { mode ->
+                    val isSelected = selectedModes.contains(mode)
                     FilterChip(
                         selected = isSelected,
-                        onClick = { viewModel.setMode(mode) },
+                        onClick = { viewModel.toggleMode(mode) },
                         label = { Text(mode.title) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = if (mode == AssistMode.NONE) MaterialTheme.colorScheme.secondaryContainer else activeColor.copy(alpha = 0.2f),
@@ -171,3 +178,7 @@ fun MainScreen(viewModel: MainViewModel) {
         }
     }
 }
+
+
+
+

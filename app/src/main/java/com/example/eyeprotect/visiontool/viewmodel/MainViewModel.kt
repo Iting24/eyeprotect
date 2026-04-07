@@ -12,7 +12,11 @@ enum class AssistMode(val title: String) {
     GREEN("Green"),
     BLUE("Blue"),
     YELLOW("Yellow"),
-    ALL("All"),
+    ORANGE("Orange"),
+    BROWN("Brown"),
+    INDIGO("Indigo"),
+    PURPLE("Purple"),
+    GRAY("Gray"),
     NONE("Off")
 }
 
@@ -23,8 +27,8 @@ data class MaskTransform(
 )
 
 class MainViewModel : ViewModel() {
-    private val _currentMode = MutableStateFlow(AssistMode.NONE)
-    val currentMode: StateFlow<AssistMode> = _currentMode.asStateFlow()
+    private val _selectedModes = MutableStateFlow<Set<AssistMode>>(setOf(AssistMode.NONE))
+    val selectedModes: StateFlow<Set<AssistMode>> = _selectedModes.asStateFlow()
 
     private val _textureAlpha = MutableStateFlow(0.5f)
     val textureAlpha: StateFlow<Float> = _textureAlpha.asStateFlow()
@@ -35,8 +39,21 @@ class MainViewModel : ViewModel() {
     private val _maskTransform = MutableStateFlow<MaskTransform?>(null)
     val maskTransform: StateFlow<MaskTransform?> = _maskTransform.asStateFlow()
 
-    fun setMode(mode: AssistMode) {
-        _currentMode.value = mode
+    fun toggleMode(mode: AssistMode) {
+        val current = _selectedModes.value
+        val next = when (mode) {
+            AssistMode.NONE -> setOf(AssistMode.NONE)
+            else -> {
+                val withoutNone = current - AssistMode.NONE
+                if (withoutNone.contains(mode)) {
+                    val reduced = withoutNone - mode
+                    if (reduced.isEmpty()) setOf(AssistMode.NONE) else reduced
+                } else {
+                    withoutNone + mode
+                }
+            }
+        }
+        _selectedModes.value = next
     }
 
     fun setAlpha(alpha: Float) {
