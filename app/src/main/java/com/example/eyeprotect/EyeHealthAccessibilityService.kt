@@ -44,6 +44,9 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetector
 import com.google.mlkit.vision.pose.PoseDetector
 import com.example.eyeprotect.R
+import com.example.eyeprotect.monitoring.DeepNightLyingReminder
+import com.example.eyeprotect.monitoring.EyeExerciseOverlayService
+import com.example.eyeprotect.monitoring.MonitoringMetrics
 import dagger.hilt.android.AndroidEntryPoint
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -97,6 +100,10 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
     private var lastFaceSeenTimestamp = 0L
     private var isMonitoringEnabled = true
 
+    private var autoExerciseUsageMs = 0L
+    private var lastAutoExerciseTickUptimeMs = 0L
+    private var lastAutoExerciseShownUptimeMs = 0L
+
     private lateinit var sensorManager: SensorManager
     private var rotationVectorSensor: Sensor? = null
     private var gyroSensor: Sensor? = null
@@ -149,7 +156,7 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action != ACTION_SET_MONITORING) return
             val enabled = intent.getBooleanExtra(EXTRA_MONITORING_ENABLED, true)
-            val prefs = getSharedPreferences("eyeprotect_prefs", Context.MODE_PRIVATE)
+            val prefs = getSharedPreferences(PreferenceKeys.PREFS_NAME, Context.MODE_PRIVATE)
             prefs.edit().putBoolean(PREF_MONITORING_ENABLED, enabled).apply()
             applyMonitoringState(enabled)
         }
@@ -161,7 +168,7 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
         lifecycleRegistry.currentState = Lifecycle.State.CREATED
         
         // 載入儲存的門檻值 (未校正前不啟用提醒，避免誤報)
-        val prefs = getSharedPreferences("eyeprotect_prefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences(PreferenceKeys.PREFS_NAME, Context.MODE_PRIVATE)
         isMonitoringEnabled = prefs.getBoolean(PREF_MONITORING_ENABLED, true)
         if (prefs.contains("iris_threshold")) {
             detector.irisDistanceThreshold = prefs.getFloat("iris_threshold", detector.irisDistanceThreshold)
@@ -223,13 +230,14 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
 
     private fun publishMonitoringPaused() {
         val now = SystemClock.uptimeMillis()
-        val prefs = getSharedPreferences("eyeprotect_prefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences(PreferenceKeys.PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit()
             .putLong(PREF_LIVE_TS, now)
             .putInt(PREF_LIVE_WARNINGS_MASK, 0)
             .putFloat(PREF_LIVE_IRIS_NORM, Float.NaN)
             .putFloat(PREF_LIVE_EYE_OPEN_MIN, Float.NaN)
             .putFloat(PREF_LIVE_SLOUCH_SCORE, Float.NaN)
+            .putLong(PREF_LIVE_FACE_SEEN_UPTIME_MS, 0L)
             .apply()
 
         val intent = Intent(ACTION_LIVE_METRICS).apply {
@@ -239,6 +247,7 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
             putExtra(EXTRA_LIVE_IRIS_NORM, Float.NaN)
             putExtra(EXTRA_LIVE_EYE_OPEN_MIN, Float.NaN)
             putExtra(EXTRA_LIVE_SLOUCH_SCORE, Float.NaN)
+            putExtra(EXTRA_LIVE_FACE_SEEN_UPTIME_MS, 0L)
         }
         sendBroadcast(intent)
     }
@@ -358,13 +367,14 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
         lastSensorPublishTimestamp = now
 
         // Publish even if camera isn't producing frames so the "lying" indicator updates.
-        val prefs = getSharedPreferences("eyeprotect_prefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences(PreferenceKeys.PREFS_NAME, Context.MODE_PRIVATE)
         val existingMask = prefs.getInt(PREF_LIVE_WARNINGS_MASK, 0)
         val lyingBit = if (isLyingActive) 8 else 0
         val mergedMask = (existingMask and 0x7) or lyingBit
         val editor = prefs.edit()
             .putLong(PREF_LIVE_TS, now)
             .putInt(PREF_LIVE_WARNINGS_MASK, mergedMask)
+            .putLong(PREF_LIVE_FACE_SEEN_UPTIME_MS, lastFaceSeenTimestamp)
         if (!lastPitchDegrees.isNaN()) editor.putFloat(PREF_LIVE_PITCH_DEG, lastPitchDegrees.toFloat())
         if (!lastRollDegrees.isNaN()) editor.putFloat(PREF_LIVE_ROLL_DEG, lastRollDegrees.toFloat())
         if (!lastTiltDegrees.isNaN()) editor.putFloat(PREF_LIVE_TILT_DEG, lastTiltDegrees.toFloat())
@@ -374,6 +384,7 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
             setPackage(packageName)
             putExtra(EXTRA_LIVE_TS, now)
             putExtra(EXTRA_LIVE_WARNINGS_MASK, mergedMask)
+            putExtra(EXTRA_LIVE_FACE_SEEN_UPTIME_MS, lastFaceSeenTimestamp)
             if (!lastPitchDegrees.isNaN()) putExtra(EXTRA_LIVE_PITCH_DEG, lastPitchDegrees.toFloat())
             if (!lastRollDegrees.isNaN()) putExtra(EXTRA_LIVE_ROLL_DEG, lastRollDegrees.toFloat())
             if (!lastTiltDegrees.isNaN()) putExtra(EXTRA_LIVE_TILT_DEG, lastTiltDegrees.toFloat())
@@ -491,10 +502,11 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
                 (if (warningsWithLying.contains(WarningState.LYING)) 8 else 0)
 
         val now = SystemClock.uptimeMillis()
-        val prefs = getSharedPreferences("eyeprotect_prefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences(PreferenceKeys.PREFS_NAME, Context.MODE_PRIVATE)
         val editor = prefs.edit()
             .putLong(PREF_LIVE_TS, now)
             .putInt(PREF_LIVE_WARNINGS_MASK, warningsMask)
+            .putLong(PREF_LIVE_FACE_SEEN_UPTIME_MS, lastFaceSeenTimestamp)
         // Clear stale values when the current frame has no face/pose.
         editor.putFloat(PREF_LIVE_IRIS_NORM, irisNorm ?: Float.NaN)
         editor.putFloat(PREF_LIVE_EYE_OPEN_MIN, eyeOpenMin ?: Float.NaN)
@@ -508,6 +520,7 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
             setPackage(packageName)
             putExtra(EXTRA_LIVE_TS, now)
             putExtra(EXTRA_LIVE_WARNINGS_MASK, warningsMask)
+            putExtra(EXTRA_LIVE_FACE_SEEN_UPTIME_MS, lastFaceSeenTimestamp)
             putExtra(EXTRA_LIVE_IRIS_NORM, irisNorm ?: Float.NaN)
             putExtra(EXTRA_LIVE_EYE_OPEN_MIN, eyeOpenMin ?: Float.NaN)
             putExtra(EXTRA_LIVE_SLOUCH_SCORE, slouchScore?.toFloat() ?: Float.NaN)
@@ -516,6 +529,88 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
             if (!lastTiltDegrees.isNaN()) putExtra(EXTRA_LIVE_TILT_DEG, lastTiltDegrees.toFloat())
         }
         sendBroadcast(intent)
+
+        maybeRunAutoNightReminder(
+            nowUptimeMs = now,
+            warningsMask = warningsMask,
+            irisNorm = irisNorm,
+            eyeOpenMin = eyeOpenMin,
+            slouchScore = slouchScore?.toFloat()
+        )
+        maybeTriggerAutoEyeExercise(nowUptimeMs = now)
+    }
+
+    private fun maybeRunAutoNightReminder(
+        nowUptimeMs: Long,
+        warningsMask: Int,
+        irisNorm: Float?,
+        eyeOpenMin: Float?,
+        slouchScore: Float?,
+    ) {
+        val prefs = getSharedPreferences(PreferenceKeys.PREFS_NAME, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(PreferenceKeys.PREF_AUTO_NIGHT_MODE_ENABLED, false)) return
+        if (!isMonitoringEnabled) return
+
+        val metrics = MonitoringMetrics(
+            ts = nowUptimeMs,
+            warningsMask = warningsMask,
+            isLyingActive = isLyingActive,
+            lastFaceDetectedTime = lastFaceSeenTimestamp,
+            irisNorm = irisNorm,
+            eyeOpenMin = eyeOpenMin,
+            slouchScore = slouchScore,
+            pitchDeg = if (!lastPitchDegrees.isNaN()) lastPitchDegrees.toFloat() else null,
+            rollDeg = if (!lastRollDegrees.isNaN()) lastRollDegrees.toFloat() else null,
+            tiltDeg = if (!lastTiltDegrees.isNaN()) lastTiltDegrees.toFloat() else null
+        )
+
+        ContextCompat.getMainExecutor(this).execute {
+            if (!isMonitoringEnabled) return@execute
+            DeepNightLyingReminder.update(metrics = metrics, tts = tts)
+        }
+    }
+
+    private fun maybeTriggerAutoEyeExercise(nowUptimeMs: Long) {
+        val prefs = getSharedPreferences(PreferenceKeys.PREFS_NAME, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(PreferenceKeys.PREF_AUTO_EYE_EXERCISE_ENABLED, false)) {
+            autoExerciseUsageMs = 0L
+            lastAutoExerciseTickUptimeMs = 0L
+            return
+        }
+
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        val isInteractive = powerManager.isInteractive
+        val faceRecent =
+            lastFaceSeenTimestamp > 0L && nowUptimeMs - lastFaceSeenTimestamp <= AUTO_EXERCISE_FACE_RECENCY_MS
+        val active = isInteractive && faceRecent
+
+        if (!active) {
+            if (lastAutoExerciseTickUptimeMs > 0L && nowUptimeMs - lastAutoExerciseTickUptimeMs >= AUTO_EXERCISE_RESET_GAP_MS) {
+                autoExerciseUsageMs = 0L
+            }
+            lastAutoExerciseTickUptimeMs = nowUptimeMs
+            return
+        }
+
+        if (lastAutoExerciseTickUptimeMs > 0L) {
+            val gap = nowUptimeMs - lastAutoExerciseTickUptimeMs
+            if (gap >= AUTO_EXERCISE_RESET_GAP_MS) {
+                autoExerciseUsageMs = 0L
+            } else {
+                autoExerciseUsageMs += gap.coerceAtMost(AUTO_EXERCISE_MAX_TICK_MS)
+            }
+        }
+        lastAutoExerciseTickUptimeMs = nowUptimeMs
+
+        if (autoExerciseUsageMs < AUTO_EXERCISE_TRIGGER_MS) return
+        if (lastAutoExerciseShownUptimeMs > 0L && nowUptimeMs - lastAutoExerciseShownUptimeMs < AUTO_EXERCISE_COOLDOWN_MS) return
+
+        lastAutoExerciseShownUptimeMs = nowUptimeMs
+        autoExerciseUsageMs = 0L
+        ContextCompat.getMainExecutor(this).execute {
+            if (!isMonitoringEnabled) return@execute
+            EyeExerciseOverlayService.start(this, AUTO_EXERCISE_SECONDS)
+        }
     }
 
     private fun handleWarningState(warnings: Set<WarningState>) {
@@ -746,6 +841,7 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
         const val PREF_LIVE_ROLL_DEG = "live_roll_deg"
         const val PREF_LIVE_TILT_DEG = "live_tilt_deg"
         const val PREF_LIVE_WARNINGS_MASK = "live_warnings_mask"
+        const val PREF_LIVE_FACE_SEEN_UPTIME_MS = "live_face_seen_uptime_ms"
 
         const val EXTRA_LIVE_TS = "ts"
         const val EXTRA_LIVE_IRIS_NORM = "irisNorm"
@@ -755,6 +851,7 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
         const val EXTRA_LIVE_ROLL_DEG = "rollDeg"
         const val EXTRA_LIVE_TILT_DEG = "tiltDeg"
         const val EXTRA_LIVE_WARNINGS_MASK = "warningsMask"
+        const val EXTRA_LIVE_FACE_SEEN_UPTIME_MS = "faceSeenUptimeMs"
         const val EXTRA_MONITORING_ENABLED = "enabled"
 
         private const val SENSOR_METRICS_INTERVAL_MS = 500L
@@ -767,5 +864,12 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
         private const val LYING_MAX_GYRO_MAG = 3.0 // rad/s
         private const val LYING_FACE_RECENCY_MS = 5000L
         private const val LYING_ALERT_COOLDOWN_MS = 20000L
+
+        private const val AUTO_EXERCISE_FACE_RECENCY_MS = 5_000L
+        private const val AUTO_EXERCISE_TRIGGER_MS = 20 * 60_000L
+        private const val AUTO_EXERCISE_RESET_GAP_MS = 5 * 60_000L
+        private const val AUTO_EXERCISE_COOLDOWN_MS = 60 * 60_000L
+        private const val AUTO_EXERCISE_MAX_TICK_MS = 2_000L
+        private const val AUTO_EXERCISE_SECONDS = 30
     }
 }

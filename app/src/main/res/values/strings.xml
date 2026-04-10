@@ -29,14 +29,14 @@
     <string name="eye_settings_section_calibration">個人校正</string>
     <string name="eye_settings_section_features">護眼功能</string>
 
-    <string name="eye_settings_eye_exercise_title">超時強制眼睛體操（預留）</string>
-    <string name="eye_settings_eye_exercise_desc">當使用時間超過門檻時，以懸浮窗覆蓋目前 App 提醒並引導體操。</string>
+    <string name="eye_settings_eye_exercise_title">超時提醒眼睛體操</string>
+    <string name="eye_settings_eye_exercise_desc">持續使用約 20 分鐘後，會跳出 30 秒懸浮窗引導體操（需要懸浮窗權限）。</string>
 
     <string name="eye_settings_walk_detection_title">GPS + 陀螺儀走路偵測（預留）</string>
     <string name="eye_settings_walk_detection_desc">偵測走路時滑手機並提醒（先保留開關，後續再補實作）。</string>
 
-    <string name="eye_settings_auto_night_title">自動夜間護眼模式（預留）</string>
-    <string name="eye_settings_auto_night_desc">依環境光或疲勞程度自動調整顯示（先保留開關）。</string>
+    <string name="eye_settings_auto_night_title">深夜躺姿語音提醒</string>
+    <string name="eye_settings_auto_night_desc">23:00–05:00 躺姿持續 3 分鐘會語音提醒，同一提醒 15 分鐘內最多一次。</string>
 
     <string name="eye_settings_overlay_permission_hint">需要「在其他應用程式上層顯示」權限。</string>
     <string name="eye_settings_open_overlay_permission">前往開啟懸浮窗權限</string>

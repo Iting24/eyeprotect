@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.SystemClock
 import android.provider.Settings
 import android.text.TextUtils
 import androidx.activity.ComponentActivity
@@ -420,7 +421,7 @@ fun DashboardScreen(
     onOpenEyeExercise: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
-    val prefs = remember { context.getSharedPreferences("eyeprotect_prefs", Context.MODE_PRIVATE) }
+    val prefs = remember { context.getSharedPreferences(PreferenceKeys.PREFS_NAME, Context.MODE_PRIVATE) }
     var monitoringEnabled by remember {
         mutableStateOf(prefs.getBoolean(EyeHealthAccessibilityService.PREF_MONITORING_ENABLED, true))
     }
@@ -429,6 +430,7 @@ fun DashboardScreen(
     var irisNorm by remember { mutableFloatStateOf(prefs.getFloat(EyeHealthAccessibilityService.PREF_LIVE_IRIS_NORM, Float.NaN)) }
     var eyeOpenMin by remember { mutableFloatStateOf(prefs.getFloat(EyeHealthAccessibilityService.PREF_LIVE_EYE_OPEN_MIN, Float.NaN)) }
     var slouchScore by remember { mutableFloatStateOf(prefs.getFloat(EyeHealthAccessibilityService.PREF_LIVE_SLOUCH_SCORE, Float.NaN)) }
+    var faceSeenUptimeMs by remember { mutableLongStateOf(prefs.getLong(EyeHealthAccessibilityService.PREF_LIVE_FACE_SEEN_UPTIME_MS, 0L)) }
     var pitchDeg by remember { mutableFloatStateOf(prefs.getFloat(EyeHealthAccessibilityService.PREF_LIVE_PITCH_DEG, Float.NaN)) }
     var rollDeg by remember { mutableFloatStateOf(prefs.getFloat(EyeHealthAccessibilityService.PREF_LIVE_ROLL_DEG, Float.NaN)) }
     var tiltDeg by remember { mutableFloatStateOf(prefs.getFloat(EyeHealthAccessibilityService.PREF_LIVE_TILT_DEG, Float.NaN)) }
@@ -478,6 +480,10 @@ fun DashboardScreen(
                 }
                 if (intent.hasExtra(EyeHealthAccessibilityService.EXTRA_LIVE_TILT_DEG)) {
                     tiltDeg = intent.getFloatExtra(EyeHealthAccessibilityService.EXTRA_LIVE_TILT_DEG, tiltDeg)
+                }
+                if (intent.hasExtra(EyeHealthAccessibilityService.EXTRA_LIVE_FACE_SEEN_UPTIME_MS)) {
+                    faceSeenUptimeMs =
+                        intent.getLongExtra(EyeHealthAccessibilityService.EXTRA_LIVE_FACE_SEEN_UPTIME_MS, faceSeenUptimeMs)
                 }
 
                 // Only camera frames include the continuous series we care about.
@@ -562,6 +568,15 @@ fun DashboardScreen(
 
             EyeExerciseCard(onOpenEyeExercise = onOpenEyeExercise)
 
+            MonitoringStatusCard(
+                monitoringEnabled = monitoringEnabled && setupReady,
+                liveTsUptimeMs = liveTs,
+                faceSeenUptimeMs = faceSeenUptimeMs,
+                pitchDeg = pitchDeg,
+                rollDeg = rollDeg,
+                tiltDeg = tiltDeg
+            )
+
             MetricGrid(
                 irisNorm = irisNorm,
                 eyeOpenMin = eyeOpenMin,
@@ -587,6 +602,86 @@ fun DashboardScreen(
                 postureTrend = postureHistory,
                 lyingTrend = lyingHistory
             )
+        }
+    }
+}
+
+@Composable
+private fun MonitoringStatusCard(
+    monitoringEnabled: Boolean,
+    liveTsUptimeMs: Long,
+    faceSeenUptimeMs: Long,
+    pitchDeg: Float,
+    rollDeg: Float,
+    tiltDeg: Float
+) {
+    var nowUptime by remember { mutableLongStateOf(SystemClock.uptimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            nowUptime = SystemClock.uptimeMillis()
+            delay(1000)
+        }
+    }
+
+    val ageSec = if (liveTsUptimeMs > 0L) ((nowUptime - liveTsUptimeMs).coerceAtLeast(0L) / 1000L).toInt() else null
+    val faceAgeSec =
+        if (faceSeenUptimeMs > 0L) ((nowUptime - faceSeenUptimeMs).coerceAtLeast(0L) / 1000L).toInt() else null
+
+    val stale = ageSec != null && ageSec >= 6
+    val title = when {
+        !monitoringEnabled -> "監測狀態：已暫停"
+        stale -> "監測狀態：資料未更新"
+        else -> "監測狀態：更新中"
+    }
+
+    GlassCard {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = title,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = if (stale) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+
+            val lastUpdateText = when {
+                ageSec == null -> "--"
+                ageSec <= 1 -> "剛剛"
+                else -> "${ageSec}s 前"
+            }
+            Text(
+                text = "最後更新：$lastUpdateText",
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            val faceText = when {
+                faceAgeSec == null -> "--"
+                faceAgeSec <= 1 -> "剛剛"
+                else -> "${faceAgeSec}s 前"
+            }
+            Text(
+                text = "最近偵測到臉：$faceText",
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "角度：pitch ${formatDeg(pitchDeg)}° / roll ${formatDeg(rollDeg)}° / tilt ${formatDeg(tiltDeg)}°",
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            if (stale) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = "可能原因：無障礙服務未啟用、相機權限/前鏡頭被占用，或系統省電限制導致背景停止。",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = 16.sp
+                )
+            }
         }
     }
 }

@@ -81,16 +81,16 @@ private fun SettingsScreen(
     onCalibrationComplete: () -> Unit
 ) {
     val context = LocalContext.current
-    val prefs = remember(context) { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
+    val prefs = remember(context) { context.getSharedPreferences(com.example.eyeprotect.PreferenceKeys.PREFS_NAME, Context.MODE_PRIVATE) }
 
     var autoEyeExerciseEnabled by remember {
-        mutableStateOf(prefs.getBoolean(PREF_AUTO_EYE_EXERCISE_ENABLED, false))
+        mutableStateOf(prefs.getBoolean(com.example.eyeprotect.PreferenceKeys.PREF_AUTO_EYE_EXERCISE_ENABLED, false))
     }
     var walkDetectionEnabled by remember {
-        mutableStateOf(prefs.getBoolean(PREF_WALK_DETECTION_ENABLED, false))
+        mutableStateOf(prefs.getBoolean(com.example.eyeprotect.PreferenceKeys.PREF_WALK_DETECTION_ENABLED, false))
     }
     var autoNightEnabled by remember {
-        mutableStateOf(prefs.getBoolean(PREF_AUTO_NIGHT_MODE_ENABLED, false))
+        mutableStateOf(prefs.getBoolean(com.example.eyeprotect.PreferenceKeys.PREF_AUTO_NIGHT_MODE_ENABLED, false))
     }
 
     var showCalibration by remember(openCalibrationInitially) { mutableStateOf(openCalibrationInitially) }
@@ -148,7 +148,7 @@ private fun SettingsScreen(
                     checked = autoEyeExerciseEnabled,
                     onCheckedChange = { enabled ->
                         autoEyeExerciseEnabled = enabled
-                        prefs.edit().putBoolean(PREF_AUTO_EYE_EXERCISE_ENABLED, enabled).apply()
+                        prefs.edit().putBoolean(com.example.eyeprotect.PreferenceKeys.PREF_AUTO_EYE_EXERCISE_ENABLED, enabled).apply()
                     }
                 )
 
@@ -169,7 +169,7 @@ private fun SettingsScreen(
                     checked = walkDetectionEnabled,
                     onCheckedChange = { enabled ->
                         walkDetectionEnabled = enabled
-                        prefs.edit().putBoolean(PREF_WALK_DETECTION_ENABLED, enabled).apply()
+                        prefs.edit().putBoolean(com.example.eyeprotect.PreferenceKeys.PREF_WALK_DETECTION_ENABLED, enabled).apply()
                     }
                 )
 
@@ -179,7 +179,7 @@ private fun SettingsScreen(
                     checked = autoNightEnabled,
                     onCheckedChange = { enabled ->
                         autoNightEnabled = enabled
-                        prefs.edit().putBoolean(PREF_AUTO_NIGHT_MODE_ENABLED, enabled).apply()
+                        prefs.edit().putBoolean(com.example.eyeprotect.PreferenceKeys.PREF_AUTO_NIGHT_MODE_ENABLED, enabled).apply()
                     }
                 )
             }
@@ -216,7 +216,4 @@ private fun requestOverlayPermission(context: Context) {
     context.startActivity(intent)
 }
 
-private const val PREFS_NAME = "eyeprotect_prefs"
-private const val PREF_AUTO_EYE_EXERCISE_ENABLED = "pref_auto_eye_exercise_enabled"
-private const val PREF_WALK_DETECTION_ENABLED = "pref_walk_detection_enabled"
-private const val PREF_AUTO_NIGHT_MODE_ENABLED = "pref_auto_night_mode_enabled"
+// Preference keys are shared with the background monitoring service.
