@@ -7,5 +7,18 @@
         <item name="android:statusBarColor">@color/light_background</item>
         <item name="android:navigationBarColor">@color/light_nav_background</item>
         <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+
+    <style name="Widget.Eyeprotect.BottomNavigation.ActiveIndicator" parent="">
+        <item name="android:color">@color/nav_selected_background</item>
+        <item name="android:width">58dp</item>
+        <item name="android:height">38dp</item>
+        <item name="shapeAppearance">@style/ShapeAppearance.Eyeprotect.NavIndicator</item>
+    </style>
+
+    <style name="ShapeAppearance.Eyeprotect.NavIndicator" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">19dp</item>
     </style>
 </resources>

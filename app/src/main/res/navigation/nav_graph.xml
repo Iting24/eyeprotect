@@ -20,6 +20,11 @@
         android:label="@string/nav_eye_exercise" />
 
     <fragment
+        android:id="@+id/calibrationFragment"
+        android:name="com.example.eyeprotect.nav.CalibrationFragment"
+        android:label="@string/start_calibration" />
+
+    <fragment
         android:id="@+id/settingsFragment"
         android:name="com.example.eyeprotect.nav.SettingsFragment"
         android:label="@string/nav_settings">

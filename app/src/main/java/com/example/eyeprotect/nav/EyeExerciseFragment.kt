@@ -74,6 +74,11 @@ private fun EyeExerciseScreen(onStart: (Int) -> Unit) {
     ) {
         Text(stringResource(id = R.string.title_eye_exercise), style = MaterialTheme.typography.headlineSmall)
         Text(stringResource(id = R.string.eye_exercise_subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            text = "目前先保留手動模式，節奏與自動觸發規則之後再收斂。",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall
+        )
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(onClick = { seconds = (seconds - 10).coerceAtLeast(10) }) { Text("-10s") }

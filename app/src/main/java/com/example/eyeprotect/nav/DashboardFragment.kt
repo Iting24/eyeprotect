@@ -23,7 +23,6 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
-import androidx.core.os.bundleOf
 import androidx.core.content.ContextCompat
 import com.example.eyeprotect.DashboardScreen
 import com.example.eyeprotect.EyeHealthAccessibilityService
@@ -39,10 +38,7 @@ class DashboardFragment : Fragment() {
             setContent {
                 DashboardRoute(
                     onReCalibrate = {
-                        findNavController().navigate(
-                            com.example.eyeprotect.R.id.settingsFragment,
-                            bundleOf("openCalibration" to true)
-                        )
+                        findNavController().navigate(com.example.eyeprotect.R.id.calibrationFragment)
                     },
                     onOpenEyeExercise = {
                         findNavController().navigate(com.example.eyeprotect.R.id.eyeExerciseFragment)

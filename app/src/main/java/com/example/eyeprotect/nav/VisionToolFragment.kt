@@ -83,6 +83,11 @@ private fun VisionToolScreen() {
                 text = stringResource(id = R.string.vision_tool_subtitle),
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            Text(
+                text = "目前主打可展示與可持續迭代，顏色判定閾值仍會持續微調。",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall
+            )
             Button(onClick = {
                 launcher.launch(Manifest.permission.CAMERA)
             }) {

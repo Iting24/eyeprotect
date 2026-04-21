@@ -62,6 +62,8 @@ class DetectorManager(
     private var lastTiltFromHorizontalDegrees = Double.NaN
     private var lyingCandidateStartTimestamp = 0L
     private var isLyingActive = false
+    private var squintWarningStreak = 0
+    private var slouchWarningStreak = 0
 
     private var isRunning = false
 
@@ -88,25 +90,28 @@ class DetectorManager(
         slouchRatioThreshold: Double?
     ) {
         irisDistance?.let {
-            ruleDetector.irisDistanceThreshold = it
+            ruleDetector.irisDistanceThreshold = it.coerceIn(0.03f, 0.45f)
             ruleDetector.enableTooCloseWarning = true
         }
         eyeOpenThreshold?.let {
-            ruleDetector.eyeOpenThreshold = it
+            ruleDetector.eyeOpenThreshold = it.coerceIn(0.10f, 0.90f)
             ruleDetector.enableSquintWarning = true
         }
         slouchRatioThreshold?.let {
-            ruleDetector.slouchingPostureRatioThreshold = it
+            ruleDetector.slouchingPostureRatioThreshold = it.coerceIn(0.10, 2.50)
             ruleDetector.enableSlouchWarning = true
         }
     }
 
-    fun start(onMetrics: (MonitoringMetrics) -> Unit) {
+    fun start(
+        onMetrics: (MonitoringMetrics) -> Unit,
+        onWarnings: (Set<WarningState>) -> Unit = {}
+    ) {
         if (isRunning) return
         isRunning = true
         lifecycleRegistry.currentState = Lifecycle.State.STARTED
         startSensors(onMetrics)
-        startCamera(onMetrics)
+        startCamera(onMetrics, onWarnings)
     }
 
     fun stop() {
@@ -204,6 +209,7 @@ class DetectorManager(
                 warningsMask = lyingBit,
                 isLyingActive = isLyingActive,
                 lastFaceDetectedTime = lastFaceSeenTimestamp,
+                isCameraFrame = false,
                 pitchDeg = if (!lastPitchDegrees.isNaN()) lastPitchDegrees.toFloat() else null,
                 rollDeg = if (!lastRollDegrees.isNaN()) lastRollDegrees.toFloat() else null,
                 tiltDeg = if (!lastTiltDegrees.isNaN()) lastTiltDegrees.toFloat() else null
@@ -211,13 +217,16 @@ class DetectorManager(
         )
     }
 
-    private fun startCamera(onMetrics: (MonitoringMetrics) -> Unit) {
+    private fun startCamera(
+        onMetrics: (MonitoringMetrics) -> Unit,
+        onWarnings: (Set<WarningState>) -> Unit
+    ) {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
         cameraProviderFuture.addListener({
             try {
                 val provider: ProcessCameraProvider = cameraProviderFuture.get()
                 cameraProvider = provider
-                val analyzerImpl = FrameAnalyzer(onMetrics)
+                val analyzerImpl = FrameAnalyzer(onMetrics, onWarnings)
                 val analyzer = ImageAnalysis.Builder()
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
@@ -246,7 +255,11 @@ class DetectorManager(
     }
 
     @ExperimentalGetImage
-    private fun analyzeImage(imageProxy: ImageProxy, onMetrics: (MonitoringMetrics) -> Unit) {
+    private fun analyzeImage(
+        imageProxy: ImageProxy,
+        onMetrics: (MonitoringMetrics) -> Unit,
+        onWarnings: (Set<WarningState>) -> Unit
+    ) {
         if (!isRunning) {
             imageProxy.close()
             return
@@ -287,7 +300,9 @@ class DetectorManager(
                 imageHeight = imageHeight
             )
 
-            val warningsWithLying = if (isLyingActive) warnings + WarningState.LYING else warnings
+            val stableWarnings = stabilizeCameraWarnings(warnings)
+            val warningsWithLying = if (isLyingActive) stableWarnings + WarningState.LYING else stableWarnings
+            onWarnings(warningsWithLying)
             val irisNorm = face?.let { ruleDetector.computeNormalizedIrisDistance(it, imageWidth) }
             val eyeOpenMin = face?.let { ruleDetector.computeEyeOpenMin(it) }
             val slouchScore = pose?.let { ruleDetector.computePostureRatio(it) }?.toFloat()
@@ -304,6 +319,11 @@ class DetectorManager(
                     warningsMask = warningsMask,
                     isLyingActive = isLyingActive,
                     lastFaceDetectedTime = lastFaceSeenTimestamp,
+                    isCameraFrame = true,
+                    faceDetected = face != null,
+                    poseDetected = pose != null,
+                    faceError = !faceTask.isSuccessful,
+                    poseError = !poseTask.isSuccessful,
                     irisNorm = irisNorm,
                     eyeOpenMin = eyeOpenMin,
                     slouchScore = slouchScore,
@@ -317,21 +337,35 @@ class DetectorManager(
         }
     }
 
+    private fun stabilizeCameraWarnings(warnings: Set<WarningState>): Set<WarningState> {
+        // Distance warning should be immediate; squint/slouch are noisier ML classifications.
+        squintWarningStreak = if (warnings.contains(WarningState.SQUINTING)) squintWarningStreak + 1 else 0
+        slouchWarningStreak = if (warnings.contains(WarningState.SLOUCHING)) slouchWarningStreak + 1 else 0
+
+        return buildSet {
+            if (warnings.contains(WarningState.TOO_CLOSE)) add(WarningState.TOO_CLOSE)
+            if (squintWarningStreak >= CAMERA_WARNING_CONFIRM_FRAMES) add(WarningState.SQUINTING)
+            if (slouchWarningStreak >= CAMERA_WARNING_CONFIRM_FRAMES) add(WarningState.SLOUCHING)
+        }
+    }
+
     private inner class FrameAnalyzer(
-        private val onMetrics: (MonitoringMetrics) -> Unit
+        private val onMetrics: (MonitoringMetrics) -> Unit,
+        private val onWarnings: (Set<WarningState>) -> Unit
     ) : ImageAnalysis.Analyzer {
         @ExperimentalGetImage
         override fun analyze(imageProxy: ImageProxy) {
-            analyzeImage(imageProxy, onMetrics)
+            analyzeImage(imageProxy, onMetrics, onWarnings)
         }
     }
 
     companion object {
         private const val TAG = "DetectorManager"
-        private const val DETECTION_INTERVAL_MS = 1000L
+        private const val DETECTION_INTERVAL_MS = 750L
 
         private const val SENSOR_METRICS_INTERVAL_MS = 500L
-        private const val LYING_HOLD_MS = 3000L
+        private const val LYING_HOLD_MS = 4000L
+        private const val CAMERA_WARNING_CONFIRM_FRAMES = 2
         private const val LYING_PITCH_DEG = 65.0
         private const val LYING_ROLL_DEG = 65.0
         private const val LYING_SIDE_MIN_PITCH_DEG = 35.0

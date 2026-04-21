@@ -22,6 +22,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.AssistChip
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,34 +37,21 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
-import com.example.eyeprotect.CalibrationScreen
 import com.example.eyeprotect.R
 import com.example.eyeprotect.ui.theme.EyeprotectTheme
-import com.google.mlkit.vision.face.FaceDetector
-import com.google.mlkit.vision.pose.PoseDetector
 import dagger.hilt.android.AndroidEntryPoint
-import javax.inject.Inject
 
 @AndroidEntryPoint
 class SettingsFragment : Fragment() {
 
-    @Inject lateinit var faceDetector: FaceDetector
-    @Inject lateinit var poseDetector: PoseDetector
-
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
-        val openCalibrationArg = arguments?.getBoolean("openCalibration", false) ?: false
         return ComposeView(requireContext()).apply {
             setContent {
                 EyeprotectTheme {
                     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                         SettingsScreen(
-                            faceDetector = faceDetector,
-                            poseDetector = poseDetector,
-                            openCalibrationInitially = openCalibrationArg,
-                            onCalibrationComplete = {
-                                if (openCalibrationArg) {
-                                    findNavController().popBackStack(R.id.dashboardFragment, false)
-                                }
+                            onOpenCalibration = {
+                                findNavController().navigate(R.id.calibrationFragment)
                             }
                         )
                     }
@@ -75,10 +63,7 @@ class SettingsFragment : Fragment() {
 
 @Composable
 private fun SettingsScreen(
-    faceDetector: FaceDetector,
-    poseDetector: PoseDetector,
-    openCalibrationInitially: Boolean,
-    onCalibrationComplete: () -> Unit
+    onOpenCalibration: () -> Unit
 ) {
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences(com.example.eyeprotect.PreferenceKeys.PREFS_NAME, Context.MODE_PRIVATE) }
@@ -91,19 +76,6 @@ private fun SettingsScreen(
     }
     var autoNightEnabled by remember {
         mutableStateOf(prefs.getBoolean(com.example.eyeprotect.PreferenceKeys.PREF_AUTO_NIGHT_MODE_ENABLED, false))
-    }
-
-    var showCalibration by remember(openCalibrationInitially) { mutableStateOf(openCalibrationInitially) }
-    if (showCalibration) {
-        CalibrationScreen(
-            faceDetector = faceDetector,
-            poseDetector = poseDetector,
-            onCalibrationComplete = {
-                showCalibration = false
-                onCalibrationComplete()
-            }
-        )
-        return
     }
 
     Column(
@@ -126,7 +98,12 @@ private fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(stringResource(id = R.string.eye_settings_section_calibration), style = MaterialTheme.typography.titleMedium)
-                Button(onClick = { showCalibration = true }) { Text(stringResource(id = R.string.start_calibration)) }
+                Text(
+                    text = "更新你的眼睛距離、睜眼程度與坐姿基準。",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Button(onClick = onOpenCalibration) { Text(stringResource(id = R.string.start_calibration)) }
             }
         }
 
@@ -146,6 +123,7 @@ private fun SettingsScreen(
                     title = stringResource(id = R.string.eye_settings_eye_exercise_title),
                     description = stringResource(id = R.string.eye_settings_eye_exercise_desc),
                     checked = autoEyeExerciseEnabled,
+                    beta = true,
                     onCheckedChange = { enabled ->
                         autoEyeExerciseEnabled = enabled
                         prefs.edit().putBoolean(com.example.eyeprotect.PreferenceKeys.PREF_AUTO_EYE_EXERCISE_ENABLED, enabled).apply()
@@ -167,6 +145,7 @@ private fun SettingsScreen(
                     title = stringResource(id = R.string.eye_settings_walk_detection_title),
                     description = stringResource(id = R.string.eye_settings_walk_detection_desc),
                     checked = walkDetectionEnabled,
+                    beta = true,
                     onCheckedChange = { enabled ->
                         walkDetectionEnabled = enabled
                         prefs.edit().putBoolean(com.example.eyeprotect.PreferenceKeys.PREF_WALK_DETECTION_ENABLED, enabled).apply()
@@ -192,6 +171,7 @@ private fun FeatureToggleRow(
     title: String,
     description: String,
     checked: Boolean,
+    beta: Boolean = false,
     onCheckedChange: (Boolean) -> Unit
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -199,7 +179,16 @@ private fun FeatureToggleRow(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Text(title, style = MaterialTheme.typography.titleSmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(title, style = MaterialTheme.typography.titleSmall)
+                if (beta) {
+                    AssistChip(
+                        onClick = {},
+                        enabled = false,
+                        label = { Text("Beta") }
+                    )
+                }
+            }
             Text(description, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         }
         Spacer(Modifier.width(12.dp))

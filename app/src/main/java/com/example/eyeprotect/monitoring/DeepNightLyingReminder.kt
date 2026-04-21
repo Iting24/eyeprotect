@@ -120,8 +120,13 @@ object DeepNightLyingReminder {
     }
 
     private fun pickMessage(userName: String?): String {
-        val raw = messageTemplates[Random.nextInt(messageTemplates.size)]
         val name = userName?.trim().orEmpty()
+        val candidates = if (name.isNotEmpty()) {
+            messageTemplates.filter { it.contains("{name}") }.ifEmpty { messageTemplates }
+        } else {
+            messageTemplates
+        }
+        val raw = candidates[Random.nextInt(candidates.size)]
         return if (name.isNotEmpty()) {
             raw.replace("{name}", name)
         } else {

@@ -1,15 +1,19 @@
 package com.example.eyeprotect.monitoring
 
 import android.annotation.SuppressLint
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.example.eyeprotect.MainActivity
 import com.example.eyeprotect.PostureAndEyeDetector
 import com.example.eyeprotect.R
@@ -50,6 +54,7 @@ class MonitoringForegroundService : Service() {
         detectorManager?.stop()
         detectorManager = null
         repo.setRunning(false)
+        LiveMonitoringStore.publishPaused(this)
         super.onDestroy()
     }
 
@@ -82,9 +87,12 @@ class MonitoringForegroundService : Service() {
             poseDetector = poseDetector,
             ruleDetector = ruleDetector
         ).also { manager ->
-            manager.start { metrics ->
-                repo.updateMetrics(metrics)
-            }
+            manager.start(
+                onMetrics = { metrics ->
+                    repo.updateMetrics(metrics)
+                    LiveMonitoringStore.publishMetrics(this, metrics)
+                }
+            )
         }
     }
 
@@ -100,7 +108,7 @@ class MonitoringForegroundService : Service() {
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_eye_health)
             .setContentTitle("VisionGuard AI")
-            .setContentText("姿勢與走路監測中（前景服務）")
+            .setContentText("距離、姿勢與躺姿監測中（前景服務）")
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
@@ -123,6 +131,7 @@ class MonitoringForegroundService : Service() {
         const val ACTION_START = "com.example.eyeprotect.monitoring.START"
         const val ACTION_STOP = "com.example.eyeprotect.monitoring.STOP"
 
+        private const val TAG = "MonitoringService"
         private const val CHANNEL_ID = "visionguard_monitoring"
         private const val NOTIFICATION_ID = 1101
 
@@ -131,17 +140,36 @@ class MonitoringForegroundService : Service() {
         private const val KEY_EYE_OPEN_THRESHOLD = "eye_open_threshold"
         private const val KEY_SLOUCH_THRESHOLD = "slouch_angle_threshold"
 
-        fun start(context: Context) {
+        fun start(context: Context): Boolean {
+            if (!context.hasRequiredMonitoringPermissions()) {
+                Log.w(TAG, "Monitoring start blocked: missing camera or notification permission")
+                return false
+            }
             val intent = Intent(context, MonitoringForegroundService::class.java).setAction(ACTION_START)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+            return try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+                true
+            } catch (exception: RuntimeException) {
+                Log.e(TAG, "Unable to start monitoring foreground service", exception)
+                false
             }
         }
 
         fun stop(context: Context) {
             context.stopService(Intent(context, MonitoringForegroundService::class.java))
+        }
+
+        private fun Context.hasRequiredMonitoringPermissions(): Boolean {
+            val hasCamera =
+                ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+            val hasNotifications =
+                Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                    ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+            return hasCamera && hasNotifications
         }
     }
 }

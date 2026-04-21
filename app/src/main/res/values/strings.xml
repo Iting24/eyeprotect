@@ -15,11 +15,11 @@
     <string name="title_eye_exercise">眼球體操</string>
     <string name="title_settings">護眼設定</string>
 
-    <string name="vision_tool_subtitle">色盲 AR 辨識（相機）</string>
+    <string name="vision_tool_subtitle">Beta 功能：色彩／色弱輔助辨識（相機）</string>
     <string name="vision_tool_permission_granted">相機權限已授權，這裡可以放入 Preview + AR 辨識流程。</string>
     <string name="request_camera_permission">請求相機權限</string>
 
-    <string name="eye_exercise_subtitle">手動啟動體操（需要懸浮窗權限）</string>
+    <string name="eye_exercise_subtitle">Beta 功能：手動啟動體操（需要懸浮窗權限）</string>
     <string name="eye_exercise_start">啟動體操</string>
     <string name="eye_exercise_timer">定時：%1$ds</string>
 
@@ -29,11 +29,11 @@
     <string name="eye_settings_section_calibration">個人校正</string>
     <string name="eye_settings_section_features">護眼功能</string>
 
-    <string name="eye_settings_eye_exercise_title">超時提醒眼睛體操</string>
-    <string name="eye_settings_eye_exercise_desc">持續使用約 20 分鐘後，會跳出 30 秒懸浮窗引導體操（需要懸浮窗權限）。</string>
+    <string name="eye_settings_eye_exercise_title">超時提醒眼睛體操 Beta</string>
+    <string name="eye_settings_eye_exercise_desc">目前先保留設定與手動入口；自動跳出流程仍在定義中。</string>
 
-    <string name="eye_settings_walk_detection_title">GPS + 陀螺儀走路偵測（預留）</string>
-    <string name="eye_settings_walk_detection_desc">偵測走路時滑手機並提醒（先保留開關，後續再補實作）。</string>
+    <string name="eye_settings_walk_detection_title">GPS + 陀螺儀走路偵測 Beta</string>
+    <string name="eye_settings_walk_detection_desc">功能方向已保留，提醒規則與感測器整合仍在補完。</string>
 
     <string name="eye_settings_auto_night_title">深夜躺姿語音提醒</string>
     <string name="eye_settings_auto_night_desc">23:00–05:00 躺姿持續 3 分鐘會語音提醒，同一提醒 15 分鐘內最多一次。</string>

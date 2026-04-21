@@ -11,16 +11,18 @@
     <!-- Match legacy Compose dark palette (ui/theme/Color.kt) -->
     <color name="dark_navy">#FF0A0E17</color>
     <color name="card_background">#FF161B22</color>
-    <color name="accent_teal">#FF00BFA5</color>
-    <color name="accent_orange">#FFFB8C00</color>
+    <color name="accent_teal">#FF2F80ED</color>
+    <color name="accent_orange">#FFF2B84B</color>
     <color name="text_white">#FFF0F0F0</color>
     <color name="text_grey">#FFABAFB3</color>
 
     <!-- Light UI palette (default) -->
-    <color name="light_background">#FFF6FAFF</color>
+    <color name="light_background">#FFF2F7FC</color>
     <color name="light_surface">#FFFFFFFF</color>
     <color name="light_nav_background">#FFFFFFFF</color>
-    <color name="light_text_primary">#FF0F172A</color>
-    <color name="light_text_secondary">#FF475569</color>
-    <color name="light_outline">#FFE2E8F0</color>
+    <color name="light_text_primary">#FF202B3D</color>
+    <color name="light_text_secondary">#FF667085</color>
+    <color name="light_outline">#FFDDE7F0</color>
+    <color name="nav_selected_background">#FF3D8BFF</color>
+    <color name="nav_unselected">#FF6E7683</color>
 </resources>
