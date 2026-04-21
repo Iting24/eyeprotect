@@ -13,3 +13,13 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Local generated documents
+/ql-out/
+/statistics_exam_review.pdf
+/statistics_formulas.html
+/statistics_formulas.pdf
+/statistics_formulas.txt
+/statistics_formulas_pretty.pdf
+/test_pdf.pdf
+/test_pdf.txt
