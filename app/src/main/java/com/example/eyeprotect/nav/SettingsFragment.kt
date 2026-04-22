@@ -50,6 +50,7 @@ class SettingsFragment : Fragment() {
                 EyeprotectTheme {
                     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                         SettingsScreen(
+                            onBack = { findNavController().returnToDashboard() },
                             onOpenCalibration = {
                                 findNavController().navigate(R.id.calibrationFragment)
                             }
@@ -63,6 +64,7 @@ class SettingsFragment : Fragment() {
 
 @Composable
 private fun SettingsScreen(
+    onBack: () -> Unit,
     onOpenCalibration: () -> Unit
 ) {
     val context = LocalContext.current
@@ -84,6 +86,7 @@ private fun SettingsScreen(
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        BackToDashboardButton(onBack = onBack)
         Text(stringResource(id = R.string.title_settings), style = MaterialTheme.typography.headlineSmall)
         Text(stringResource(id = R.string.settings_subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant)
 

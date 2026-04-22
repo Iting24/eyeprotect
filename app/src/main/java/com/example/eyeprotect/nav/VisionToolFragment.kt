@@ -30,6 +30,7 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.navigation.fragment.findNavController
 import com.example.eyeprotect.R
 import com.example.eyeprotect.ui.theme.EyeprotectTheme
 import com.example.eyeprotect.visiontool.screens.MainScreen
@@ -44,7 +45,7 @@ class VisionToolFragment : Fragment() {
             setContent {
                 EyeprotectTheme {
                     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                        VisionToolScreen()
+                        VisionToolScreen(onBack = { findNavController().returnToDashboard() })
                     }
                 }
             }
@@ -53,7 +54,7 @@ class VisionToolFragment : Fragment() {
 }
 
 @Composable
-private fun VisionToolScreen() {
+private fun VisionToolScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     var granted by remember {
         mutableStateOf(
@@ -70,7 +71,7 @@ private fun VisionToolScreen() {
 
     if (granted) {
         val viewModel: MainViewModel = viewModel()
-        MainScreen(viewModel = viewModel)
+        MainScreen(viewModel = viewModel, onBack = onBack)
     } else {
         Column(
             modifier = Modifier
@@ -78,6 +79,7 @@ private fun VisionToolScreen() {
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            BackToDashboardButton(onBack = onBack)
             Text(stringResource(id = R.string.title_vision_tool), style = MaterialTheme.typography.headlineSmall)
             Text(
                 text = stringResource(id = R.string.vision_tool_subtitle),

@@ -12,13 +12,19 @@
 
     <style name="Widget.Eyeprotect.BottomNavigation.ActiveIndicator" parent="">
         <item name="android:color">@color/nav_selected_background</item>
-        <item name="android:width">58dp</item>
-        <item name="android:height">38dp</item>
+        <item name="android:width">54dp</item>
+        <item name="android:height">34dp</item>
         <item name="shapeAppearance">@style/ShapeAppearance.Eyeprotect.NavIndicator</item>
     </style>
 
     <style name="ShapeAppearance.Eyeprotect.NavIndicator" parent="">
         <item name="cornerFamily">rounded</item>
         <item name="cornerSize">19dp</item>
+    </style>
+
+    <style name="TextAppearance.Eyeprotect.BottomNavigation.Label" parent="">
+        <item name="android:textSize">11sp</item>
+        <item name="android:lineHeight">13sp</item>
+        <item name="android:fontFamily">sans</item>
     </style>
 </resources>

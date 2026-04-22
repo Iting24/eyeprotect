@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.Fragment
+import androidx.navigation.fragment.findNavController
 import com.example.eyeprotect.R
 import com.example.eyeprotect.monitoring.EyeExerciseOverlayService
 import com.example.eyeprotect.ui.theme.EyeprotectTheme
@@ -40,7 +41,10 @@ class EyeExerciseFragment : Fragment() {
             setContent {
                 EyeprotectTheme {
                     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                        EyeExerciseScreen(onStart = { seconds -> EyeExerciseOverlayService.start(requireContext(), seconds) })
+                        EyeExerciseScreen(
+                            onBack = { findNavController().returnToDashboard() },
+                            onStart = { seconds -> EyeExerciseOverlayService.start(requireContext(), seconds) }
+                        )
                     }
                 }
             }
@@ -49,7 +53,10 @@ class EyeExerciseFragment : Fragment() {
 }
 
 @Composable
-private fun EyeExerciseScreen(onStart: (Int) -> Unit) {
+private fun EyeExerciseScreen(
+    onBack: () -> Unit,
+    onStart: (Int) -> Unit
+) {
     val context = LocalContext.current
     var seconds by remember { mutableIntStateOf(30) }
     var needsOverlayPermission by remember { mutableStateOf(false) }
@@ -72,6 +79,7 @@ private fun EyeExerciseScreen(onStart: (Int) -> Unit) {
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        BackToDashboardButton(onBack = onBack)
         Text(stringResource(id = R.string.title_eye_exercise), style = MaterialTheme.typography.headlineSmall)
         Text(stringResource(id = R.string.eye_exercise_subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(

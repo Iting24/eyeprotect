@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import com.example.eyeprotect.nav.BackToDashboardButton
 import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetector
@@ -62,6 +63,7 @@ import kotlin.math.min
 fun CalibrationScreen(
     faceDetector: FaceDetector,
     poseDetector: PoseDetector,
+    onBack: (() -> Unit)? = null,
     onCalibrationComplete: () -> Unit
 ) {
     val context = LocalContext.current
@@ -190,6 +192,7 @@ fun CalibrationScreen(
         verticalArrangement = Arrangement.spacedBy(18.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        onBack?.let { BackToDashboardButton(onBack = it, modifier = Modifier.align(Alignment.Start)) }
         Text(
             text = "個人基準校正",
             style = MaterialTheme.typography.headlineSmall,

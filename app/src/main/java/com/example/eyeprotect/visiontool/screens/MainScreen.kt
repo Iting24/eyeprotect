@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.camera.view.PreviewView
+import com.example.eyeprotect.nav.BackToDashboardButton
 import com.example.eyeprotect.visiontool.analysis.ColorMaskAnalyzer
 import com.example.eyeprotect.visiontool.components.CameraPreview
 import com.example.eyeprotect.visiontool.components.ColorMaskedPatternOverlay
@@ -21,7 +22,10 @@ import com.example.eyeprotect.visiontool.viewmodel.MainViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen(viewModel: MainViewModel) {
+fun MainScreen(
+    viewModel: MainViewModel,
+    onBack: (() -> Unit)? = null
+) {
     val currentMode by viewModel.currentMode.collectAsState()
     val alpha by viewModel.textureAlpha.collectAsState()
     val maskBitmap by viewModel.maskBitmap.collectAsState()
@@ -69,6 +73,19 @@ fun MainScreen(viewModel: MainViewModel) {
             previewView = previewView,
             maskTransform = maskTransform
         )
+
+        onBack?.let {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(12.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+                shape = RoundedCornerShape(18.dp),
+                tonalElevation = 4.dp
+            ) {
+                BackToDashboardButton(onBack = it)
+            }
+        }
 
         Box(
             modifier = Modifier

@@ -33,6 +33,7 @@ class CalibrationFragment : Fragment() {
                         CalibrationScreen(
                             faceDetector = faceDetector,
                             poseDetector = poseDetector,
+                            onBack = { findNavController().returnToDashboard() },
                             onCalibrationComplete = {
                                 findNavController().popBackStack(R.id.dashboardFragment, false)
                             }
