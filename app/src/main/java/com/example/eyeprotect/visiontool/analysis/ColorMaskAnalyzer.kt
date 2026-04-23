@@ -27,6 +27,10 @@ class ColorMaskAnalyzer(
 ) : ImageAnalysis.Analyzer {
 
     private val modesRef = AtomicReference<Set<AssistMode>>(setOf(initialMode))
+    private var srcMaskBuffer = BooleanArray(0)
+    private var blurMaskBufferA = BooleanArray(0)
+    private var blurMaskBufferB = BooleanArray(0)
+    private var pixelBuffer = IntArray(0)
 
     fun setModes(modes: Set<AssistMode>) {
         modesRef.set(modes)
@@ -72,7 +76,7 @@ class ColorMaskAnalyzer(
                 pixelStride = pixelStride
             )
 
-            val srcMask = BooleanArray(total)
+            val srcMask = ensureMaskCapacity(total)
             val orderedModes = modes.sortedBy { modePriority(it) }
 
             for (y in 0 until maskH) {
@@ -104,7 +108,7 @@ class ColorMaskAnalyzer(
                 srcMask
             }
 
-            val pixels = IntArray(smoothed.size)
+            val pixels = ensurePixelCapacity(smoothed.size)
             for (i in smoothed.indices) {
                 pixels[i] = if (smoothed[i]) 0xFFFFFFFF.toInt() else 0x00FFFFFF
             }
@@ -126,7 +130,7 @@ class ColorMaskAnalyzer(
     ): BooleanArray {
         var current = src
         repeat(passes) {
-            val next = BooleanArray(width * height)
+            val next = ensureBlurMaskCapacity(width * height, current)
             for (y in 0 until height) {
                 for (x in 0 until width) {
                     var count = 0
@@ -145,6 +149,34 @@ class ColorMaskAnalyzer(
             current = next
         }
         return current
+    }
+
+    private fun ensureMaskCapacity(size: Int): BooleanArray {
+        if (srcMaskBuffer.size != size) {
+            srcMaskBuffer = BooleanArray(size)
+        } else {
+            srcMaskBuffer.fill(false)
+        }
+        return srcMaskBuffer
+    }
+
+    private fun ensureBlurMaskCapacity(size: Int, current: BooleanArray): BooleanArray {
+        val target =
+            if (current === blurMaskBufferA) {
+                if (blurMaskBufferB.size != size) blurMaskBufferB = BooleanArray(size) else blurMaskBufferB.fill(false)
+                blurMaskBufferB
+            } else {
+                if (blurMaskBufferA.size != size) blurMaskBufferA = BooleanArray(size) else blurMaskBufferA.fill(false)
+                blurMaskBufferA
+            }
+        return target
+    }
+
+    private fun ensurePixelCapacity(size: Int): IntArray {
+        if (pixelBuffer.size != size) {
+            pixelBuffer = IntArray(size)
+        }
+        return pixelBuffer
     }
 
     private fun getByteAsInt(buffer: ByteBuffer, index: Int): Int {
