@@ -56,19 +56,30 @@ fun MainScreen(viewModel: MainViewModel) {
     val hasMultiple = selectedModes.count { it != AssistMode.NONE } > 1
 
     val activeColor = when (activeMode) {
-        AssistMode.RED -> Color(0xFFE53935)
+        AssistMode.RED -> Color(0xFFFF3B30)
         AssistMode.GREEN -> Color(0xFF43A047)
         AssistMode.BLUE -> Color(0xFF1E88E5)
-        AssistMode.YELLOW -> Color(0xFFFDD835)
-        AssistMode.ORANGE -> Color(0xFFF28C28)
-        AssistMode.BROWN -> Color(0xFF8D6E63)
+        AssistMode.YELLOW -> Color(0xFFFFE600)
+        AssistMode.ORANGE -> Color(0xFFFF9800)
+        AssistMode.BROWN -> Color(0xFF6D4C41)
         AssistMode.INDIGO -> Color(0xFF3949AB)
         AssistMode.PURPLE -> Color(0xFF8E24AA)
         AssistMode.GRAY -> Color(0xFF757575)
         AssistMode.NONE -> MaterialTheme.colorScheme.outline
     }
 
-    val patternColor = if (hasMultiple || activeMode == AssistMode.BLUE || activeMode == AssistMode.YELLOW || activeMode == AssistMode.GREEN || activeMode == AssistMode.GRAY || activeMode == AssistMode.RED || activeMode == AssistMode.INDIGO || activeMode == AssistMode.PURPLE) {
+    val patternColor = if (
+        hasMultiple ||
+            activeMode == AssistMode.BLUE ||
+            activeMode == AssistMode.YELLOW ||
+            activeMode == AssistMode.GREEN ||
+            activeMode == AssistMode.GRAY ||
+            activeMode == AssistMode.RED ||
+            activeMode == AssistMode.INDIGO ||
+            activeMode == AssistMode.PURPLE ||
+            activeMode == AssistMode.ORANGE ||
+            activeMode == AssistMode.BROWN
+    ) {
         MaterialTheme.colorScheme.onSurface
     } else {
         activeColor
@@ -79,8 +90,8 @@ fun MainScreen(viewModel: MainViewModel) {
             initialMode = AssistMode.NONE,
             onMaskReady = { viewModel.setMaskBitmap(it) },
             downscaleStep = 2,
-            blurPasses = 0,
-            blurThreshold = 4
+            blurPasses = 1,
+            blurThreshold = 3
         )
     }
 

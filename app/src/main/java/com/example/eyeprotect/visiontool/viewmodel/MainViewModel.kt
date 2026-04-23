@@ -30,7 +30,7 @@ class MainViewModel : ViewModel() {
     private val _selectedModes = MutableStateFlow<Set<AssistMode>>(setOf(AssistMode.NONE))
     val selectedModes: StateFlow<Set<AssistMode>> = _selectedModes.asStateFlow()
 
-    private val _textureAlpha = MutableStateFlow(0.5f)
+    private val _textureAlpha = MutableStateFlow(1f)
     val textureAlpha: StateFlow<Float> = _textureAlpha.asStateFlow()
 
     private val _maskBitmap = MutableStateFlow<Bitmap?>(null)
