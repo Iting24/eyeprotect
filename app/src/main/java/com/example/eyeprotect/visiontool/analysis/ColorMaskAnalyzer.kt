@@ -59,40 +59,18 @@ class ColorMaskAnalyzer(
             val hsv = FloatArray(3)
             val total = maskW * maskH
 
-            var greenishCount = 0
-            var yellowishCount = 0
-
-            // Pre-pass: detect if green & yellow both appear in frame.
-            for (y in 0 until maskH) {
-                val srcY = crop.top + y * step
-                val rowOffset = srcY * rowStride
-                for (x in 0 until maskW) {
-                    val srcX = crop.left + x * step
-                    val offset = rowOffset + srcX * pixelStride
-                    val r = getByteAsInt(buffer, offset)
-                    val g = getByteAsInt(buffer, offset + 1)
-                    val b = getByteAsInt(buffer, offset + 2)
-
-                    Color.RGBToHSV(r, g, b, hsv)
-                    val h = hsv[0]
-                    val s = hsv[1]
-                    val v = hsv[2]
-
-                    if (s >= 0.22f && v >= 0.22f && isInRange(h, 65f, 165f)) {
-                        greenishCount++
-                    }
-                    if (s >= 0.22f && v >= 0.24f && isInRange(h, 44f, 56f)) {
-                        yellowishCount++
-                    }
-                }
-            }
-
-            val minHits = max(20, total / 100) // 1% of pixels, at least 20
-            val relaxGreenTowardYellow =
-                modes.contains(AssistMode.GREEN) &&
-                    modes.contains(AssistMode.YELLOW) &&
-                    greenishCount >= minHits &&
-                    yellowishCount >= minHits
+            val relaxGreenTowardYellow = shouldRelaxGreenTowardYellow(
+                modes = modes,
+                buffer = buffer,
+                hsv = hsv,
+                cropLeft = crop.left,
+                cropTop = crop.top,
+                maskW = maskW,
+                maskH = maskH,
+                step = step,
+                rowStride = rowStride,
+                pixelStride = pixelStride
+            )
 
             val srcMask = BooleanArray(total)
             val orderedModes = modes.sortedBy { modePriority(it) }
@@ -126,11 +104,12 @@ class ColorMaskAnalyzer(
                 srcMask
             }
 
-            val maskBitmap = Bitmap.createBitmap(maskW, maskH, Bitmap.Config.ARGB_8888)
+            val pixels = IntArray(smoothed.size)
             for (i in smoothed.indices) {
-                val color = if (smoothed[i]) 0xFFFFFFFF.toInt() else 0x00FFFFFF
-                maskBitmap.setPixel(i % maskW, i / maskW, color)
+                pixels[i] = if (smoothed[i]) 0xFFFFFFFF.toInt() else 0x00FFFFFF
             }
+            val maskBitmap = Bitmap.createBitmap(maskW, maskH, Bitmap.Config.ARGB_8888)
+            maskBitmap.setPixels(pixels, 0, maskW, 0, 0, maskW, maskH)
 
             onMaskReady(maskBitmap)
         } finally {
@@ -170,6 +149,56 @@ class ColorMaskAnalyzer(
 
     private fun getByteAsInt(buffer: ByteBuffer, index: Int): Int {
         return buffer.get(index).toInt() and 0xFF
+    }
+
+    private fun shouldRelaxGreenTowardYellow(
+        modes: Set<AssistMode>,
+        buffer: ByteBuffer,
+        hsv: FloatArray,
+        cropLeft: Int,
+        cropTop: Int,
+        maskW: Int,
+        maskH: Int,
+        step: Int,
+        rowStride: Int,
+        pixelStride: Int
+    ): Boolean {
+        if (!modes.contains(AssistMode.GREEN) || !modes.contains(AssistMode.YELLOW)) {
+            return false
+        }
+
+        var greenishCount = 0
+        var yellowishCount = 0
+        val minHits = max(20, (maskW * maskH) / 100) // 1% of pixels, at least 20
+
+        for (y in 0 until maskH) {
+            val srcY = cropTop + y * step
+            val rowOffset = srcY * rowStride
+            for (x in 0 until maskW) {
+                val srcX = cropLeft + x * step
+                val offset = rowOffset + srcX * pixelStride
+                val r = getByteAsInt(buffer, offset)
+                val g = getByteAsInt(buffer, offset + 1)
+                val b = getByteAsInt(buffer, offset + 2)
+
+                Color.RGBToHSV(r, g, b, hsv)
+                val h = hsv[0]
+                val s = hsv[1]
+                val v = hsv[2]
+
+                if (s >= 0.22f && v >= 0.22f && isInRange(h, 65f, 165f)) {
+                    greenishCount++
+                }
+                if (s >= 0.22f && v >= 0.24f && isInRange(h, 44f, 56f)) {
+                    yellowishCount++
+                }
+                if (greenishCount >= minHits && yellowishCount >= minHits) {
+                    return true
+                }
+            }
+        }
+
+        return false
     }
 
     private fun modePriority(mode: AssistMode): Int {
