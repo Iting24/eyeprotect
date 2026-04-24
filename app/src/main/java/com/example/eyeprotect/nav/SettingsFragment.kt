@@ -23,6 +23,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.AssistChip
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,7 +38,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
+import com.example.eyeprotect.PreferenceKeys
 import com.example.eyeprotect.R
+import com.example.eyeprotect.monitoring.TrueToneOverlayService
 import com.example.eyeprotect.ui.theme.EyeprotectTheme
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -77,7 +80,18 @@ private fun SettingsScreen(
         mutableStateOf(prefs.getBoolean(com.example.eyeprotect.PreferenceKeys.PREF_WALK_DETECTION_ENABLED, false))
     }
     var autoNightEnabled by remember {
-        mutableStateOf(prefs.getBoolean(com.example.eyeprotect.PreferenceKeys.PREF_AUTO_NIGHT_MODE_ENABLED, false))
+        mutableStateOf(prefs.getBoolean(PreferenceKeys.PREF_AUTO_NIGHT_MODE_ENABLED, false))
+    }
+    var trueToneEnabled by remember {
+        mutableStateOf(prefs.getBoolean(PreferenceKeys.PREF_TRUE_TONE_ENABLED, false))
+    }
+
+    LaunchedEffect(trueToneEnabled) {
+        if (trueToneEnabled && hasOverlayPermission(context)) {
+            TrueToneOverlayService.start(context)
+        } else if (!trueToneEnabled) {
+            TrueToneOverlayService.stop(context)
+        }
     }
 
     Column(
@@ -156,12 +170,34 @@ private fun SettingsScreen(
                 )
 
                 FeatureToggleRow(
+                    title = stringResource(id = R.string.eye_settings_true_tone_title),
+                    description = stringResource(id = R.string.eye_settings_true_tone_desc),
+                    checked = trueToneEnabled,
+                    beta = true,
+                    onCheckedChange = { enabled ->
+                        trueToneEnabled = enabled
+                        prefs.edit().putBoolean(PreferenceKeys.PREF_TRUE_TONE_ENABLED, enabled).apply()
+                    }
+                )
+
+                if (trueToneEnabled && !hasOverlayPermission(context)) {
+                    Text(
+                        text = stringResource(id = R.string.eye_settings_overlay_permission_hint),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Button(onClick = { requestOverlayPermission(context) }) {
+                        Text(stringResource(id = R.string.eye_settings_open_overlay_permission))
+                    }
+                }
+
+                FeatureToggleRow(
                     title = stringResource(id = R.string.eye_settings_auto_night_title),
                     description = stringResource(id = R.string.eye_settings_auto_night_desc),
                     checked = autoNightEnabled,
                     onCheckedChange = { enabled ->
                         autoNightEnabled = enabled
-                        prefs.edit().putBoolean(com.example.eyeprotect.PreferenceKeys.PREF_AUTO_NIGHT_MODE_ENABLED, enabled).apply()
+                        prefs.edit().putBoolean(PreferenceKeys.PREF_AUTO_NIGHT_MODE_ENABLED, enabled).apply()
                     }
                 )
             }
@@ -206,6 +242,10 @@ private fun requestOverlayPermission(context: Context) {
         android.net.Uri.parse("package:${context.packageName}")
     ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     context.startActivity(intent)
+}
+
+private fun hasOverlayPermission(context: Context): Boolean {
+    return Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(context)
 }
 
 // Preference keys are shared with the background monitoring service.
