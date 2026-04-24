@@ -161,15 +161,15 @@ fun CalibrationScreen(
             return@LaunchedEffect
         }
 
-        val distanceThreshold = irisMedian * 1.15f
-        val squintThreshold = (eyeMedian * 0.7f).coerceIn(0.15f, 0.85f)
-        val slouchThreshold = (slouchMedian * 0.75).coerceIn(0.15, 2.0).toFloat()
+        val distanceThreshold = CalibrationPrefs.sanitizeIrisThreshold(irisMedian * 1.15f)
+        val squintThreshold = CalibrationPrefs.sanitizeEyeOpenThreshold(eyeMedian * 0.7f)
+        val slouchThreshold = CalibrationPrefs.sanitizeSlouchThreshold((slouchMedian * 0.75).toFloat())
 
         val prefs = context.getSharedPreferences(PreferenceKeys.PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit()
-            .putFloat("iris_threshold", distanceThreshold)
-            .putFloat("eye_open_threshold", squintThreshold)
-            .putFloat("slouch_angle_threshold", slouchThreshold)
+            .putFloat(CalibrationPrefs.KEY_IRIS_THRESHOLD, distanceThreshold)
+            .putFloat(CalibrationPrefs.KEY_EYE_OPEN_THRESHOLD, squintThreshold)
+            .putFloat(CalibrationPrefs.KEY_SLOUCH_THRESHOLD, slouchThreshold)
             .apply()
 
         val intent = Intent(EyeHealthAccessibilityService.ACTION_UPDATE_THRESHOLDS).apply {
@@ -279,8 +279,12 @@ private fun CalibrationWhyCard() {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(26.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.75f)
+        )
     ) {
         Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(
@@ -328,8 +332,12 @@ private fun CalibrationProgressCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.75f)
+        )
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(

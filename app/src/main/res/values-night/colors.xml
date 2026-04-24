@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="light_background">#FF101923</color>
+    <color name="light_surface">#FF16212D</color>
+    <color name="light_nav_background">#FF16212D</color>
+    <color name="light_text_primary">#FFEAF2FA</color>
+    <color name="light_text_secondary">#FFC2CEDC</color>
+    <color name="light_outline">#FF43576E</color>
+    <color name="nav_selected_background">#FF3D8BFF</color>
+    <color name="nav_selected_content">#FFFFFFFF</color>
+    <color name="nav_unselected">#FFB1C0D2</color>
+</resources>

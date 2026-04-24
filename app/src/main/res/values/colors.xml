@@ -23,6 +23,7 @@
     <color name="light_text_primary">#FF202B3D</color>
     <color name="light_text_secondary">#FF667085</color>
     <color name="light_outline">#FFDDE7F0</color>
-    <color name="nav_selected_background">#FF3D8BFF</color>
+    <color name="nav_selected_background">#FFDCEBFF</color>
+    <color name="nav_selected_content">#FF1F3B63</color>
     <color name="nav_unselected">#FF6E7683</color>
 </resources>

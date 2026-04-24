@@ -14,6 +14,7 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import com.example.eyeprotect.CalibrationPrefs
 import com.example.eyeprotect.MainActivity
 import com.example.eyeprotect.PostureAndEyeDetector
 import com.example.eyeprotect.R
@@ -65,20 +66,19 @@ class MonitoringForegroundService : Service() {
         repo.setRunning(true)
 
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (!CalibrationPrefs.hasValidCalibration(prefs)) {
+            Log.w(TAG, "Monitoring start blocked: missing or invalid calibration")
+            stopSelf()
+            return
+        }
         val ruleDetector = PostureAndEyeDetector().apply {
-            if (prefs.contains(KEY_IRIS_THRESHOLD)) {
-                irisDistanceThreshold = prefs.getFloat(KEY_IRIS_THRESHOLD, irisDistanceThreshold)
-                enableTooCloseWarning = true
-            }
-            if (prefs.contains(KEY_EYE_OPEN_THRESHOLD)) {
-                eyeOpenThreshold = prefs.getFloat(KEY_EYE_OPEN_THRESHOLD, eyeOpenThreshold)
-                enableSquintWarning = true
-            }
-            if (prefs.contains(KEY_SLOUCH_THRESHOLD)) {
-                slouchingPostureRatioThreshold =
-                    prefs.getFloat(KEY_SLOUCH_THRESHOLD, slouchingPostureRatioThreshold.toFloat()).toDouble()
-                enableSlouchWarning = true
-            }
+            irisDistanceThreshold = prefs.getFloat(CalibrationPrefs.KEY_IRIS_THRESHOLD, irisDistanceThreshold)
+            enableTooCloseWarning = true
+            eyeOpenThreshold = prefs.getFloat(CalibrationPrefs.KEY_EYE_OPEN_THRESHOLD, eyeOpenThreshold)
+            enableSquintWarning = true
+            slouchingPostureRatioThreshold =
+                prefs.getFloat(CalibrationPrefs.KEY_SLOUCH_THRESHOLD, slouchingPostureRatioThreshold.toFloat()).toDouble()
+            enableSlouchWarning = true
         }
 
         detectorManager = DetectorManager(
@@ -136,13 +136,14 @@ class MonitoringForegroundService : Service() {
         private const val NOTIFICATION_ID = 1101
 
         private const val PREFS_NAME = "eyeprotect_prefs"
-        private const val KEY_IRIS_THRESHOLD = "iris_threshold"
-        private const val KEY_EYE_OPEN_THRESHOLD = "eye_open_threshold"
-        private const val KEY_SLOUCH_THRESHOLD = "slouch_angle_threshold"
-
         fun start(context: Context): Boolean {
             if (!context.hasRequiredMonitoringPermissions()) {
                 Log.w(TAG, "Monitoring start blocked: missing camera or notification permission")
+                return false
+            }
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            if (!CalibrationPrefs.hasValidCalibration(prefs)) {
+                Log.w(TAG, "Monitoring start blocked: missing or invalid calibration")
                 return false
             }
             val intent = Intent(context, MonitoringForegroundService::class.java).setAction(ACTION_START)

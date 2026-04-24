@@ -124,14 +124,24 @@ class DetectorManager(
     }
 
     private fun startSensors(onMetrics: (MonitoringMetrics) -> Unit) {
-        sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        val manager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        if (manager == null) {
+            Log.w(TAG, "Sensor service unavailable; continuing without orientation metrics")
+            publishSensorMetricsIfNeeded(onMetrics)
+            return
+        }
+        sensorManager = manager
         rotationVectorSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
         gyroSensor = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
         gravitySensor = sensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY)
 
-        rotationVectorSensor?.let { sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_GAME) }
-        gyroSensor?.let { sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_GAME) }
-        gravitySensor?.let { sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_GAME) }
+        try {
+            rotationVectorSensor?.let { sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_GAME) }
+            gyroSensor?.let { sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_GAME) }
+            gravitySensor?.let { sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_GAME) }
+        } catch (exception: RuntimeException) {
+            Log.w(TAG, "Sensor registration failed; continuing without orientation metrics", exception)
+        }
 
         // Publish periodically even before camera produces frames.
         publishSensorMetricsIfNeeded(onMetrics)
@@ -221,24 +231,49 @@ class DetectorManager(
         onMetrics: (MonitoringMetrics) -> Unit,
         onWarnings: (Set<WarningState>) -> Unit
     ) {
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
-        cameraProviderFuture.addListener({
-            try {
-                val provider: ProcessCameraProvider = cameraProviderFuture.get()
-                cameraProvider = provider
-                val analyzerImpl = FrameAnalyzer(onMetrics, onWarnings)
-                val analyzer = ImageAnalysis.Builder()
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .build()
-                    .also { it.setAnalyzer(cameraExecutor, analyzerImpl) }
-                imageAnalyzer = analyzer
-                val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
-                provider.unbindAll()
-                provider.bindToLifecycle(this, cameraSelector, analyzer)
-            } catch (e: Exception) {
-                Log.e(TAG, "CameraX failed", e)
-            }
-        }, ContextCompat.getMainExecutor(context))
+        try {
+            val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+            cameraProviderFuture.addListener({
+                try {
+                    val provider: ProcessCameraProvider = cameraProviderFuture.get()
+                    cameraProvider = provider
+                    val analyzerImpl = FrameAnalyzer(onMetrics, onWarnings)
+                    val analyzer = ImageAnalysis.Builder()
+                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                        .build()
+                        .also { it.setAnalyzer(cameraExecutor, analyzerImpl) }
+                    imageAnalyzer = analyzer
+                    val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
+                    provider.unbindAll()
+                    provider.bindToLifecycle(this, cameraSelector, analyzer)
+                } catch (e: Exception) {
+                    Log.e(TAG, "CameraX failed", e)
+                    publishCameraError(onMetrics)
+                }
+            }, ContextCompat.getMainExecutor(context))
+        } catch (exception: RuntimeException) {
+            Log.e(TAG, "Unable to request CameraX provider", exception)
+            publishCameraError(onMetrics)
+        }
+    }
+
+    private fun publishCameraError(onMetrics: (MonitoringMetrics) -> Unit) {
+        onMetrics(
+            MonitoringMetrics(
+                ts = SystemClock.uptimeMillis(),
+                warningsMask = if (isLyingActive) 8 else 0,
+                isLyingActive = isLyingActive,
+                lastFaceDetectedTime = lastFaceSeenTimestamp,
+                isCameraFrame = true,
+                faceDetected = false,
+                poseDetected = false,
+                faceError = true,
+                poseError = true,
+                pitchDeg = if (!lastPitchDegrees.isNaN()) lastPitchDegrees.toFloat() else null,
+                rollDeg = if (!lastRollDegrees.isNaN()) lastRollDegrees.toFloat() else null,
+                tiltDeg = if (!lastTiltDegrees.isNaN()) lastTiltDegrees.toFloat() else null
+            )
+        )
     }
 
     private fun stopCamera() {
@@ -274,6 +309,7 @@ class DetectorManager(
 
         val mediaImage = imageProxy.image
         if (mediaImage == null) {
+            publishCameraError(onMetrics)
             imageProxy.close()
             return
         }
@@ -285,55 +321,59 @@ class DetectorManager(
         val poseTask = poseDetector.process(image)
 
         Tasks.whenAllComplete(faceTask, poseTask).addOnCompleteListener {
-            if (!isRunning) {
-                imageProxy.close()
-                return@addOnCompleteListener
-            }
-            val face = if (faceTask.isSuccessful) faceTask.result?.firstOrNull() else null
-            val pose = if (poseTask.isSuccessful) poseTask.result else null
-            if (face != null) lastFaceSeenTimestamp = SystemClock.uptimeMillis()
+            try {
+                if (!isRunning) {
+                    return@addOnCompleteListener
+                }
+                val face = if (faceTask.isSuccessful) faceTask.result?.firstOrNull() else null
+                val pose = if (poseTask.isSuccessful) poseTask.result else null
+                if (face != null) lastFaceSeenTimestamp = SystemClock.uptimeMillis()
 
-            val warnings = ruleDetector.detectWarnings(
-                face = face,
-                pose = pose,
-                imageWidth = imageWidth,
-                imageHeight = imageHeight
-            )
-
-            val stableWarnings = stabilizeCameraWarnings(warnings)
-            val warningsWithLying = if (isLyingActive) stableWarnings + WarningState.LYING else stableWarnings
-            onWarnings(warningsWithLying)
-            val irisNorm = face?.let { ruleDetector.computeNormalizedIrisDistance(it, imageWidth) }
-            val eyeOpenMin = face?.let { ruleDetector.computeEyeOpenMin(it) }
-            val slouchScore = pose?.let { ruleDetector.computePostureRatio(it) }?.toFloat()
-
-            val warningsMask =
-                (if (warningsWithLying.contains(WarningState.TOO_CLOSE)) 1 else 0) or
-                    (if (warningsWithLying.contains(WarningState.SQUINTING)) 2 else 0) or
-                    (if (warningsWithLying.contains(WarningState.SLOUCHING)) 4 else 0) or
-                    (if (warningsWithLying.contains(WarningState.LYING)) 8 else 0)
-
-            onMetrics(
-                MonitoringMetrics(
-                    ts = SystemClock.uptimeMillis(),
-                    warningsMask = warningsMask,
-                    isLyingActive = isLyingActive,
-                    lastFaceDetectedTime = lastFaceSeenTimestamp,
-                    isCameraFrame = true,
-                    faceDetected = face != null,
-                    poseDetected = pose != null,
-                    faceError = !faceTask.isSuccessful,
-                    poseError = !poseTask.isSuccessful,
-                    irisNorm = irisNorm,
-                    eyeOpenMin = eyeOpenMin,
-                    slouchScore = slouchScore,
-                    pitchDeg = if (!lastPitchDegrees.isNaN()) lastPitchDegrees.toFloat() else null,
-                    rollDeg = if (!lastRollDegrees.isNaN()) lastRollDegrees.toFloat() else null,
-                    tiltDeg = if (!lastTiltDegrees.isNaN()) lastTiltDegrees.toFloat() else null
+                val warnings = ruleDetector.detectWarnings(
+                    face = face,
+                    pose = pose,
+                    imageWidth = imageWidth,
+                    imageHeight = imageHeight
                 )
-            )
 
-            imageProxy.close()
+                val stableWarnings = stabilizeCameraWarnings(warnings)
+                val warningsWithLying = if (isLyingActive) stableWarnings + WarningState.LYING else stableWarnings
+                onWarnings(warningsWithLying)
+                val irisNorm = face?.let { ruleDetector.computeNormalizedIrisDistance(it, imageWidth) }
+                val eyeOpenMin = face?.let { ruleDetector.computeEyeOpenMin(it) }
+                val slouchScore = pose?.let { ruleDetector.computePostureRatio(it) }?.toFloat()
+
+                val warningsMask =
+                    (if (warningsWithLying.contains(WarningState.TOO_CLOSE)) 1 else 0) or
+                        (if (warningsWithLying.contains(WarningState.SQUINTING)) 2 else 0) or
+                        (if (warningsWithLying.contains(WarningState.SLOUCHING)) 4 else 0) or
+                        (if (warningsWithLying.contains(WarningState.LYING)) 8 else 0)
+
+                onMetrics(
+                    MonitoringMetrics(
+                        ts = SystemClock.uptimeMillis(),
+                        warningsMask = warningsMask,
+                        isLyingActive = isLyingActive,
+                        lastFaceDetectedTime = lastFaceSeenTimestamp,
+                        isCameraFrame = true,
+                        faceDetected = face != null,
+                        poseDetected = pose != null,
+                        faceError = !faceTask.isSuccessful,
+                        poseError = !poseTask.isSuccessful,
+                        irisNorm = irisNorm,
+                        eyeOpenMin = eyeOpenMin,
+                        slouchScore = slouchScore,
+                        pitchDeg = if (!lastPitchDegrees.isNaN()) lastPitchDegrees.toFloat() else null,
+                        rollDeg = if (!lastRollDegrees.isNaN()) lastRollDegrees.toFloat() else null,
+                        tiltDeg = if (!lastTiltDegrees.isNaN()) lastTiltDegrees.toFloat() else null
+                    )
+                )
+            } catch (exception: RuntimeException) {
+                Log.e(TAG, "Camera analysis failed", exception)
+                publishCameraError(onMetrics)
+            } finally {
+                imageProxy.close()
+            }
         }
     }
 

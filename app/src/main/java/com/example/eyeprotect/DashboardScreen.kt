@@ -34,7 +34,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -88,8 +87,7 @@ fun DashboardScreen(
     hasCameraPermission: Boolean,
     hasCalibrated: Boolean,
     onRequestPermission: (() -> Unit)? = null,
-    onReCalibrate: (() -> Unit)? = null,
-    onOpenEyeExercise: (() -> Unit)? = null
+    onReCalibrate: (() -> Unit)? = null
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -124,9 +122,9 @@ fun DashboardScreen(
         mutableStateOf(prefs.getBoolean(EyeHealthAccessibilityService.PREF_LIVE_POSE_ERROR, false))
     }
 
-    val irisThreshold = prefs.getFloat("iris_threshold", Float.NaN)
-    val eyeOpenThreshold = prefs.getFloat("eye_open_threshold", Float.NaN)
-    val slouchThreshold = prefs.getFloat("slouch_angle_threshold", Float.NaN)
+    val irisThreshold = prefs.getFloat(CalibrationPrefs.KEY_IRIS_THRESHOLD, Float.NaN)
+    val eyeOpenThreshold = prefs.getFloat(CalibrationPrefs.KEY_EYE_OPEN_THRESHOLD, Float.NaN)
+    val slouchThreshold = prefs.getFloat(CalibrationPrefs.KEY_SLOUCH_THRESHOLD, Float.NaN)
 
     val distanceHistory = remember { mutableStateListOf<Float>() }
     val eyeOpenHistory = remember { mutableStateListOf<Float>() }
@@ -356,7 +354,6 @@ fun DashboardScreen(
                 tiltDeg = tiltDeg
             )
 
-            EyeExerciseCard(onOpenEyeExercise = onOpenEyeExercise)
         }
     }
 }
@@ -655,7 +652,21 @@ private fun MetricDetail(
     Spacer(modifier = Modifier.height(8.dp))
     ProgressTrack(progress = progress, warning = warning, accent = accent)
     Spacer(modifier = Modifier.height(10.dp))
-    Sparkline(values = trend, color = if (warning) MaterialTheme.colorScheme.error else accent, modifier = Modifier.fillMaxWidth().height(72.dp))
+    Sparkline(
+        values = trend,
+        color = if (warning) MaterialTheme.colorScheme.error else accent,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(72.dp)
+    )
+    Spacer(modifier = Modifier.height(4.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(text = "較早", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(text = "現在", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
     Spacer(modifier = Modifier.height(8.dp))
     Text(text = hint, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 16.sp)
 }
@@ -921,22 +932,30 @@ private fun Context.hasPostNotificationsPermission(): Boolean =
 
 @Composable
 private fun GridBackdrop(modifier: Modifier = Modifier) {
+    val backgroundBase = MaterialTheme.colorScheme.background
+    val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
+    val primaryGlow = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+    val secondaryGlow = MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f)
     Canvas(modifier = modifier) {
         drawRect(
             brush = Brush.linearGradient(
-                colors = listOf(Color(0xFFF7FBFF), Color(0xFFF2F7FF), Color(0xFFEEF4FF))
+                colors = listOf(
+                    backgroundBase.copy(alpha = 0.98f),
+                    backgroundBase,
+                    surfaceVariant.copy(alpha = 0.72f)
+                )
             )
         )
         drawRect(
             brush = Brush.radialGradient(
-                colors = listOf(Color(0x334CC9F0), Color.Transparent),
+                colors = listOf(primaryGlow, Color.Transparent),
                 center = Offset(size.width * 0.18f, size.height * 0.18f),
                 radius = size.minDimension * 0.65f
             )
         )
         drawRect(
             brush = Brush.radialGradient(
-                colors = listOf(Color(0x33A7F3D0), Color.Transparent),
+                colors = listOf(secondaryGlow, Color.Transparent),
                 center = Offset(size.width * 0.85f, size.height * 0.32f),
                 radius = size.minDimension * 0.70f
             )
@@ -1006,13 +1025,15 @@ private fun SetupCard(
         else -> SetupStep.DONE
     }
 
+    if (currentStep == SetupStep.DONE) return
+
     val (title, subtitle, primaryLabel, primaryAction) = when (currentStep) {
         SetupStep.CAMERA -> arrayOf("需要相機權限", "我們用前鏡頭計算距離、咪眼與姿勢，指標才會開始更新。", "授權相機", "") to onRequestCamera
         SetupStep.CALIBRATION -> arrayOf("完成個人校正", "校正後才會啟用提醒與門檻值（約 10 秒）。", if (onOpenCalibration != null) "開始校正" else "", "") to (onOpenCalibration ?: {})
         SetupStep.NOTIFICATION -> arrayOf("允許監測通知", "Android 13 以上需要通知權限，前景服務才有清楚的常駐狀態，不會讓你以為有在跑其實沒跑。", "允許通知", "") to onRequestNotifications
         SetupStep.MONITORING -> arrayOf("開始監測", "開啟監測後，前景服務會開始收集即時資料並更新儀表板。", if (onEnableMonitoring != null) "開始監測" else "", "") to (onEnableMonitoring ?: {})
-        SetupStep.ACCESSIBILITY -> arrayOf("補上提醒權限", "資料蒐集已可運作；開啟無障礙服務後，才能獲得跨 app 語音與遮罩提醒。", "開啟無障礙服務", "") to onOpenAccessibilitySettings
-        SetupStep.DONE -> arrayOf("一切就緒", "指標會持續更新；提醒會以語音與震動發出。", "", "") to {}
+        SetupStep.ACCESSIBILITY -> arrayOf("開啟提醒功能", "資料蒐集已可運作；開啟無障礙服務後，才能獲得跨 app 語音與遮罩提醒。", "開啟無障礙服務", "") to onOpenAccessibilitySettings
+        SetupStep.DONE -> arrayOf("", "", "", "") to {}
     }.let { (meta, action) ->
         Quad(meta[0], meta[1], meta[2].ifBlank { null }, action)
     }
@@ -1081,32 +1102,6 @@ private fun SetupStepRow(index: Int, label: String, done: Boolean, isCurrent: Bo
             fontSize = 13.sp,
             fontWeight = if (isCurrent && !done) FontWeight.Bold else FontWeight.Normal
         )
-    }
-}
-
-@Composable
-private fun EyeExerciseCard(onOpenEyeExercise: (() -> Unit)?) {
-    if (onOpenEyeExercise == null) return
-    GlassCard {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(text = "眼睛體操", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
-                AssistChip(onClick = {}, enabled = false, label = { Text("Beta", fontSize = 11.sp, fontWeight = FontWeight.Bold) })
-            }
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = "先提供手動啟動版本；自動觸發與完整節奏之後再收斂。",
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                lineHeight = 18.sp
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            PrimaryPillButton(text = "立即開始", onClick = onOpenEyeExercise)
-        }
     }
 }
 

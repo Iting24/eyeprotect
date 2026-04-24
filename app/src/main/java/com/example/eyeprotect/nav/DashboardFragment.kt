@@ -29,6 +29,7 @@ import com.example.eyeprotect.EyeHealthAccessibilityService
 import com.example.eyeprotect.ui.theme.EyeprotectTheme
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import com.example.eyeprotect.CalibrationPrefs
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -39,9 +40,6 @@ class DashboardFragment : Fragment() {
                 DashboardRoute(
                     onReCalibrate = {
                         findNavController().navigate(com.example.eyeprotect.R.id.calibrationFragment)
-                    },
-                    onOpenEyeExercise = {
-                        findNavController().navigate(com.example.eyeprotect.R.id.eyeExerciseFragment)
                     }
                 )
             }
@@ -51,8 +49,7 @@ class DashboardFragment : Fragment() {
 
 @Composable
 private fun DashboardRoute(
-    onReCalibrate: () -> Unit,
-    onOpenEyeExercise: () -> Unit
+    onReCalibrate: () -> Unit
 ) {
     EyeprotectTheme {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -72,10 +69,7 @@ private fun DashboardRoute(
                 lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
                     hasCameraPermission =
                         ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-                    hasCalibrated =
-                        prefs.contains("iris_threshold") &&
-                            prefs.contains("eye_open_threshold") &&
-                            prefs.contains("slouch_angle_threshold")
+                    hasCalibrated = CalibrationPrefs.hasValidCalibration(prefs)
                     isServiceEnabled = isAccessibilityServiceEnabled(context, EyeHealthAccessibilityService::class.java)
                 }
             }
@@ -85,8 +79,7 @@ private fun DashboardRoute(
                 hasCameraPermission = hasCameraPermission,
                 hasCalibrated = hasCalibrated,
                 onRequestPermission = { hasCameraPermission = true },
-                onReCalibrate = onReCalibrate,
-                onOpenEyeExercise = onOpenEyeExercise
+                onReCalibrate = onReCalibrate
             )
         }
     }

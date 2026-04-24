@@ -28,6 +28,8 @@
 
     <string name="eye_settings_section_calibration">個人校正</string>
     <string name="eye_settings_section_features">護眼功能</string>
+    <string name="eye_settings_dark_mode_title">柔和深色模式</string>
+    <string name="eye_settings_dark_mode_desc">可在深色與淺色介面間手動切換，兩種配色都維持柔和閱讀感。</string>
 
     <string name="eye_settings_eye_exercise_title">超時提醒眼睛體操 Beta</string>
     <string name="eye_settings_eye_exercise_desc">目前先保留設定與手動入口；自動跳出流程仍在定義中。</string>

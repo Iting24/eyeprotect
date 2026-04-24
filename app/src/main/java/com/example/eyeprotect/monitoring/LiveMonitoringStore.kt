@@ -8,14 +8,11 @@ object LiveMonitoringStore {
 
     fun publishMetrics(context: Context, metrics: MonitoringMetrics) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val warningsMask = if (metrics.isCameraFrame) {
-            metrics.warningsMask
-        } else {
-            // Sensor-only frames should update only lying state and orientation.
-            // Keep camera-derived warnings until the next camera frame clears them.
-            (prefs.getInt(EyeHealthAccessibilityService.PREF_LIVE_WARNINGS_MASK, 0) and 0x7) or
-                (metrics.warningsMask and 0x8)
-        }
+        val warningsMask = mergeWarningsMask(
+            previousWarningsMask = prefs.getInt(EyeHealthAccessibilityService.PREF_LIVE_WARNINGS_MASK, 0),
+            incomingWarningsMask = metrics.warningsMask,
+            isCameraFrame = metrics.isCameraFrame
+        )
         val editor = prefs.edit()
             .putLong(EyeHealthAccessibilityService.PREF_LIVE_TS, metrics.ts)
             .putInt(EyeHealthAccessibilityService.PREF_LIVE_WARNINGS_MASK, warningsMask)
@@ -73,6 +70,18 @@ object LiveMonitoringStore {
                 slouchScore = Float.NaN
             )
         )
+    }
+
+    fun mergeWarningsMask(
+        previousWarningsMask: Int,
+        incomingWarningsMask: Int,
+        isCameraFrame: Boolean
+    ): Int {
+        if (isCameraFrame) return incomingWarningsMask and 0xF
+
+        // Sensor-only frames should update only lying state and orientation.
+        // Keep camera-derived warnings until the next camera frame clears them.
+        return (previousWarningsMask and 0x7) or (incomingWarningsMask and 0x8)
     }
 
     private const val PREFS_NAME = "eyeprotect_prefs"

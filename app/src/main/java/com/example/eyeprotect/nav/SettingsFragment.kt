@@ -8,6 +8,7 @@ import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -50,7 +51,6 @@ class SettingsFragment : Fragment() {
                 EyeprotectTheme {
                     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                         SettingsScreen(
-                            onBack = { findNavController().returnToDashboard() },
                             onOpenCalibration = {
                                 findNavController().navigate(R.id.calibrationFragment)
                             }
@@ -64,12 +64,14 @@ class SettingsFragment : Fragment() {
 
 @Composable
 private fun SettingsScreen(
-    onBack: () -> Unit,
     onOpenCalibration: () -> Unit
 ) {
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences(com.example.eyeprotect.PreferenceKeys.PREFS_NAME, Context.MODE_PRIVATE) }
 
+    var darkModeEnabled by remember {
+        mutableStateOf(prefs.getBoolean(com.example.eyeprotect.PreferenceKeys.PREF_DARK_MODE_ENABLED, false))
+    }
     var autoEyeExerciseEnabled by remember {
         mutableStateOf(prefs.getBoolean(com.example.eyeprotect.PreferenceKeys.PREF_AUTO_EYE_EXERCISE_ENABLED, false))
     }
@@ -86,7 +88,6 @@ private fun SettingsScreen(
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        BackToDashboardButton(onBack = onBack)
         Text(stringResource(id = R.string.title_settings), style = MaterialTheme.typography.headlineSmall)
         Text(stringResource(id = R.string.settings_subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant)
 
@@ -120,6 +121,21 @@ private fun SettingsScreen(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
+                Text("外觀", style = MaterialTheme.typography.titleMedium)
+
+                FeatureToggleRow(
+                    title = stringResource(id = R.string.eye_settings_dark_mode_title),
+                    description = stringResource(id = R.string.eye_settings_dark_mode_desc),
+                    checked = darkModeEnabled,
+                    onCheckedChange = { enabled ->
+                        darkModeEnabled = enabled
+                        prefs.edit().putBoolean(com.example.eyeprotect.PreferenceKeys.PREF_DARK_MODE_ENABLED, enabled).apply()
+                        AppCompatDelegate.setDefaultNightMode(
+                            if (enabled) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
+                        )
+                    }
+                )
+
                 Text(stringResource(id = R.string.eye_settings_section_features), style = MaterialTheme.typography.titleMedium)
 
                 FeatureToggleRow(

@@ -42,7 +42,6 @@ class EyeExerciseFragment : Fragment() {
                 EyeprotectTheme {
                     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                         EyeExerciseScreen(
-                            onBack = { findNavController().returnToDashboard() },
                             onStart = { seconds -> EyeExerciseOverlayService.start(requireContext(), seconds) }
                         )
                     }
@@ -54,7 +53,6 @@ class EyeExerciseFragment : Fragment() {
 
 @Composable
 private fun EyeExerciseScreen(
-    onBack: () -> Unit,
     onStart: (Int) -> Unit
 ) {
     val context = LocalContext.current
@@ -79,7 +77,6 @@ private fun EyeExerciseScreen(
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        BackToDashboardButton(onBack = onBack)
         Text(stringResource(id = R.string.title_eye_exercise), style = MaterialTheme.typography.headlineSmall)
         Text(stringResource(id = R.string.eye_exercise_subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(
