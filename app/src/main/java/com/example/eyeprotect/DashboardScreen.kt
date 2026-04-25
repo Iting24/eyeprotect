@@ -34,11 +34,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
@@ -56,7 +60,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -433,32 +439,67 @@ private fun DashboardSummaryCard(
                     lineHeight = 18.sp
                 )
                 Spacer(modifier = Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatePill(
-                        text = when {
-                            ageSec == null -> "資料 --"
-                            ageSec <= 1 -> "剛剛更新"
-                            else -> "${ageSec}s 前更新"
-                        },
-                        active = monitoringEnabled && !stale
-                    )
-                    StatePill(
-                        text = when {
-                            faceAgeSec == null -> "未見臉"
-                            faceAgeSec <= 1 -> "剛偵測到臉"
-                            else -> "${faceAgeSec}s 前見臉"
-                        },
-                        active = faceAgeSec != null && faceAgeSec <= 5
-                    )
+                if (!monitoringReady) {
+                    SetupSummaryLabels()
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        StatePill(
+                            text = when {
+                                ageSec == null -> "資料 --"
+                                ageSec <= 1 -> "剛剛更新"
+                                else -> "${ageSec}s 前更新"
+                            },
+                            active = monitoringEnabled && !stale
+                        )
+                        StatePill(
+                            text = when {
+                                faceAgeSec == null -> "未見臉"
+                                faceAgeSec <= 1 -> "剛偵測到臉"
+                                else -> "${faceAgeSec}s 前見臉"
+                            },
+                            active = faceAgeSec != null && faceAgeSec <= 5
+                        )
+                    }
                 }
             }
 
             ScoreRing(
                 score = score,
+                monitoringReady = monitoringReady,
                 warning = warningCount > 0 || stale,
                 modifier = Modifier
                     .widthIn(min = 92.dp)
                     .padding(start = 14.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun SetupSummaryLabels() {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column {
+            Text(
+                text = "資料",
+                fontSize = 11.sp,
+                color = LocalContentColor.current.copy(alpha = 0.5f)
+            )
+            Text(
+                text = "--",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
+        Column {
+            Text(
+                text = "校正",
+                fontSize = 11.sp,
+                color = LocalContentColor.current.copy(alpha = 0.5f)
+            )
+            Text(
+                text = "未見臉",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium
             )
         }
     }
@@ -579,7 +620,7 @@ private fun MetricOverviewCard(
             MetricDetail(
                 unit = "水平度",
                 progress = lyingPct,
-                hint = "tilt ${formatDeg(tiltDeg)}° / pitch ${formatDeg(pitchDeg)}° / roll ${formatDeg(rollDeg)}°",
+                hint = formatAngleHint(pitchDeg = pitchDeg, rollDeg = rollDeg, tiltDeg = tiltDeg),
                 warning = lying,
                 accent = Color(0xFFFFD98A),
                 trend = lyingTrend
@@ -605,7 +646,12 @@ private fun SummaryMetricRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
             .clickable { onToggle(metric) }
-            .background(if (expanded) accent.copy(alpha = 0.18f) else accent.copy(alpha = 0.12f))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .border(
+                1.dp,
+                if (expanded || warning) accent.copy(alpha = 0.42f) else Color.White.copy(alpha = 0.06f),
+                RoundedCornerShape(18.dp)
+            )
             .padding(14.dp)
     ) {
         Row(
@@ -626,7 +672,11 @@ private fun SummaryMetricRow(
                     )
                 }
             }
-            Text(text = value, fontSize = 24.sp, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onSurface)
+            MetricValueText(
+                value = value,
+                fontSize = 24,
+                color = MaterialTheme.colorScheme.onSurface
+            )
             Spacer(modifier = Modifier.width(8.dp))
             Text(text = if (expanded) "⌃" else "›", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -643,7 +693,7 @@ private fun SummaryMetricRow(
 private fun MetricDetail(
     unit: String,
     progress: Int?,
-    hint: String,
+    hint: String?,
     warning: Boolean,
     accent: Color,
     trend: List<Float>
@@ -668,7 +718,11 @@ private fun MetricDetail(
         Text(text = "現在", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     Spacer(modifier = Modifier.height(8.dp))
-    Text(text = hint, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 16.sp)
+    if (hint == null) {
+        SkeletonPlaceholder()
+    } else {
+        Text(text = hint, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 16.sp)
+    }
 }
 
 @Composable
@@ -725,17 +779,17 @@ private fun ExpandableMonitoringStatusCard(
             if (expanded) {
                 Spacer(modifier = Modifier.height(12.dp))
                 val lastUpdateText = when {
-                    ageSec == null -> "--"
+                    ageSec == null -> null
                     ageSec <= 1 -> "剛剛"
                     else -> "${ageSec}s 前"
                 }
                 val faceText = when {
-                    faceAgeSec == null -> "--"
+                    faceAgeSec == null -> null
                     faceAgeSec <= 1 -> "剛剛"
                     else -> "${faceAgeSec}s 前"
                 }
-                Text(text = "最後更新：$lastUpdateText", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(text = "最近偵測到臉：$faceText", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SkeletonInfoLine(label = "最後更新：", value = lastUpdateText)
+                SkeletonInfoLine(label = "最近偵測到臉：", value = faceText)
                 Text(
                     text = "資料來源：${if (lastWasCameraFrame) "相機 + 感測器" else "感測器"}",
                     fontSize = 13.sp,
@@ -747,11 +801,7 @@ private fun ExpandableMonitoringStatusCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "角度：pitch ${formatDeg(pitchDeg)}° / roll ${formatDeg(rollDeg)}° / tilt ${formatDeg(tiltDeg)}°",
-                    fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                AngleInfoLine(pitchDeg = pitchDeg, rollDeg = rollDeg, tiltDeg = tiltDeg)
                 if (monitoringEnabled && !alertsReady) {
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
@@ -814,25 +864,21 @@ private fun MonitoringStatusCard(
             Spacer(modifier = Modifier.height(6.dp))
 
             val lastUpdateText = when {
-                ageSec == null -> "--"
+                ageSec == null -> null
                 ageSec <= 1 -> "剛剛"
                 else -> "${ageSec}s 前"
             }
-            Text(text = "最後更新：$lastUpdateText", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            SkeletonInfoLine(label = "最後更新：", value = lastUpdateText)
 
             val faceText = when {
-                faceAgeSec == null -> "--"
+                faceAgeSec == null -> null
                 faceAgeSec <= 1 -> "剛剛"
                 else -> "${faceAgeSec}s 前"
             }
-            Text(text = "最近偵測到臉：$faceText", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            SkeletonInfoLine(label = "最近偵測到臉：", value = faceText)
 
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "角度：pitch ${formatDeg(pitchDeg)}° / roll ${formatDeg(rollDeg)}° / tilt ${formatDeg(tiltDeg)}°",
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            AngleInfoLine(pitchDeg = pitchDeg, rollDeg = rollDeg, tiltDeg = tiltDeg)
 
             if (monitoringEnabled && !alertsReady) {
                 Spacer(modifier = Modifier.height(10.dp))
@@ -858,7 +904,33 @@ private fun MonitoringStatusCard(
 }
 
 @Composable
-private fun ScoreRing(score: Int, warning: Boolean, modifier: Modifier = Modifier) {
+private fun ScoreRing(score: Int, monitoringReady: Boolean, warning: Boolean, modifier: Modifier = Modifier) {
+    if (!monitoringReady) {
+        val setupColor = Color(0xFF2F7EF5)
+        Box(
+            modifier = modifier
+                .size(72.dp)
+                .border(3.dp, setupColor.copy(alpha = 0.3f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "0",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = setupColor
+                )
+                Text(
+                    text = "分",
+                    fontSize = 12.sp,
+                    modifier = Modifier.alpha(0.6f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        return
+    }
+
     val accent = if (warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
     Box(modifier = modifier.size(86.dp), contentAlignment = Alignment.Center) {
         Canvas(modifier = Modifier.matchParentSize()) {
@@ -886,7 +958,65 @@ private fun ScoreRing(score: Int, warning: Boolean, modifier: Modifier = Modifie
 }
 
 @Composable
+private fun SkeletonPlaceholder(
+    width: androidx.compose.ui.unit.Dp = 60.dp,
+    height: androidx.compose.ui.unit.Dp = 12.dp
+) {
+    Box(
+        modifier = Modifier
+            .width(width)
+            .height(height)
+            .clip(RoundedCornerShape(height / 2))
+            .background(Color.Gray.copy(alpha = 0.2f))
+    )
+}
+
+@Composable
+private fun MetricValueText(value: String, fontSize: Int, color: Color) {
+    if (value == "--") {
+        SkeletonPlaceholder(width = 64.dp, height = 20.dp)
+    } else {
+        Text(
+            text = value,
+            fontSize = fontSize.sp,
+            fontWeight = FontWeight.Black,
+            color = color
+        )
+    }
+}
+
+@Composable
+private fun SkeletonInfoLine(label: String, value: String?) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(text = label, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (value == null) {
+            SkeletonPlaceholder()
+        } else {
+            Text(text = value, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun AngleInfoLine(pitchDeg: Float, rollDeg: Float, tiltDeg: Float) {
+    val angleText = formatAngleHint(pitchDeg = pitchDeg, rollDeg = rollDeg, tiltDeg = tiltDeg)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(text = "角度：", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (angleText == null) {
+            SkeletonPlaceholder()
+        } else {
+            Text(text = angleText, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
 private fun StatePill(text: String, active: Boolean) {
+    StatePill(label = null, value = text, active = active)
+}
+
+@Composable
+private fun StatePill(label: String?, value: String?, active: Boolean) {
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(999.dp))
@@ -896,12 +1026,35 @@ private fun StatePill(text: String, active: Boolean) {
             )
             .padding(horizontal = 10.dp, vertical = 6.dp)
     ) {
-        Text(
-            text = text,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        if (label != null) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = label,
+                    fontSize = 12.sp,
+                    modifier = Modifier.alpha(0.5f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (value == null) {
+                    SkeletonPlaceholder(width = 48.dp, height = 10.dp)
+                } else {
+                    Text(
+                        text = value,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        } else {
+            if (value != null) {
+                Text(
+                    text = value,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
 }
 
@@ -1045,18 +1198,22 @@ private fun SetupCard(
             Text(text = subtitle, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 18.sp)
 
             Spacer(modifier = Modifier.height(12.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column {
                 SetupStepRow(1, "授權相機", done = hasCameraPermission, isCurrent = currentStep == SetupStep.CAMERA)
                 SetupStepRow(2, "完成校正", done = hasCalibrated, isCurrent = currentStep == SetupStep.CALIBRATION)
                 SetupStepRow(3, "允許通知", done = hasNotificationPermission, isCurrent = currentStep == SetupStep.NOTIFICATION)
                 SetupStepRow(4, "開始監測", done = hasCameraPermission && hasCalibrated && hasNotificationPermission && monitoringEnabled, isCurrent = currentStep == SetupStep.MONITORING)
-                SetupStepRow(5, "開啟無障礙提醒", done = isServiceEnabled, isCurrent = currentStep == SetupStep.ACCESSIBILITY)
+                SetupStepRow(5, "開啟無障礙提醒", done = isServiceEnabled, isCurrent = currentStep == SetupStep.ACCESSIBILITY, isLast = true)
             }
 
             Spacer(modifier = Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (primaryLabel != null) {
-                    PrimaryPillButton(text = primaryLabel, onClick = primaryAction)
+                    if (currentStep == SetupStep.CAMERA) {
+                        CameraPermissionButton(onClick = primaryAction)
+                    } else {
+                        PrimaryPillButton(text = primaryLabel, onClick = primaryAction)
+                    }
                 }
                 if (hasCalibrated && onOpenCalibration != null) {
                     SecondaryPillButton(text = "重新校正", onClick = onOpenCalibration)
@@ -1074,33 +1231,72 @@ private data class Quad(
 )
 
 @Composable
-private fun SetupStepRow(index: Int, label: String, done: Boolean, isCurrent: Boolean) {
-    val badgeBg = when {
-        done -> MaterialTheme.colorScheme.primary
-        isCurrent -> MaterialTheme.colorScheme.secondaryContainer
-        else -> MaterialTheme.colorScheme.surfaceVariant
-    }
-    val badgeFg = when {
-        done -> MaterialTheme.colorScheme.onPrimary
-        isCurrent -> MaterialTheme.colorScheme.onSecondaryContainer
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .size(22.dp)
-                .clip(CircleShape)
-                .background(badgeBg),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(text = if (done) "✓" else index.toString(), color = badgeFg, fontSize = 12.sp, fontWeight = FontWeight.Black)
+private fun SetupStepRow(index: Int, label: String, done: Boolean, isCurrent: Boolean, isLast: Boolean = false) {
+    val activeBlue = Color(0xFF2F7EF5)
+    val futureGrey = Color(0xFF666666)
+    val textAlpha = if (done || isCurrent) 1f else 0.4f
+    val itemVerticalPadding = 8.dp
+    val stepCircleSize = 24.dp
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .drawBehind {
+                if (!isLast) {
+                    val centerX = stepCircleSize.toPx() / 2f
+                    val lineStartY = itemVerticalPadding.toPx() + stepCircleSize.toPx() / 2f
+                    drawLine(
+                        color = futureGrey.copy(alpha = 0.5f),
+                        start = Offset(centerX, lineStartY),
+                        end = Offset(centerX, size.height),
+                        strokeWidth = 2.dp.toPx()
+                    )
+                }
+            }
+            .padding(vertical = itemVerticalPadding),
+        verticalAlignment = Alignment.Top
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(
+                modifier = Modifier
+                    .size(stepCircleSize)
+                    .then(
+                        if (done || isCurrent) {
+                            Modifier
+                                .clip(CircleShape)
+                                .background(activeBlue)
+                        } else {
+                            Modifier.border(1.dp, futureGrey, CircleShape)
+                        }
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                if (done) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
+                } else {
+                    Text(
+                        text = index.toString(),
+                        color = if (isCurrent) Color.White else futureGrey,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+            }
         }
-        Spacer(modifier = Modifier.width(10.dp))
+        Spacer(modifier = Modifier.width(12.dp))
         Text(
             text = label,
-            color = if (done) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .padding(top = 2.dp)
+                .alpha(textAlpha),
+            color = MaterialTheme.colorScheme.onSurface,
             fontSize = 13.sp,
-            fontWeight = if (isCurrent && !done) FontWeight.Bold else FontWeight.Normal
+            fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal
         )
     }
 }
@@ -1184,7 +1380,8 @@ private fun MetricGrid(
                 unit = "水平度",
                 status = if (lying) "正在躺姿用機" else if (lyingPct == null) "等待感測器" else "未達警戒",
                 progress = lyingPct,
-                hint = "tilt ${formatDeg(tiltDeg)}° / pitch ${formatDeg(pitchDeg)}° / roll ${formatDeg(rollDeg)}°",
+                hint = formatAngleHint(pitchDeg = pitchDeg, rollDeg = rollDeg, tiltDeg = tiltDeg),
+                showHintSkeleton = true,
                 warning = lying,
                 accent = Color(0xFFFFD166),
                 trend = lyingTrend
@@ -1202,6 +1399,7 @@ private fun MetricTile(
     status: String,
     progress: Int?,
     hint: String?,
+    showHintSkeleton: Boolean = false,
     warning: Boolean,
     accent: Color,
     trend: List<Float>
@@ -1217,10 +1415,9 @@ private fun MetricTile(
                 StatusDot(active = warning, accent = accent)
             }
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = value,
-                fontSize = 30.sp,
-                fontWeight = FontWeight.Black,
+            MetricValueText(
+                value = value,
+                fontSize = 30,
                 color = if (warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
             )
             Text(text = unit, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1238,6 +1435,9 @@ private fun MetricTile(
             if (hint != null) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(text = hint, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else if (showHintSkeleton) {
+                Spacer(modifier = Modifier.height(8.dp))
+                SkeletonPlaceholder()
             }
         }
     }
@@ -1284,7 +1484,9 @@ private fun HistoryChartCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(140.dp)
-                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(16.dp))
                     .padding(10.dp)
             )
         }
@@ -1343,8 +1545,8 @@ private fun GlassCard(modifier: Modifier = Modifier, content: @Composable Column
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.75f))
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
+        elevation = CardDefaults.cardElevation(0.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp), content = content)
     }
@@ -1381,6 +1583,33 @@ private fun ProgressTrack(progress: Int?, warning: Boolean, accent: Color) {
 }
 
 @Composable
+private fun CameraPermissionButton(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
+    ) {
+        Button(
+            onClick = onClick,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF2F7EF5)
+            )
+        ) {
+            Text(
+                "授權相機",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White
+            )
+        }
+    }
+}
+
+@Composable
 private fun PrimaryPillButton(text: String, onClick: () -> Unit) {
     Button(
         onClick = onClick,
@@ -1408,7 +1637,12 @@ private fun SecondaryPillButton(text: String, onClick: () -> Unit) {
     }
 }
 
-private fun formatDeg(value: Float): String = if (value.isNaN()) "--" else value.toInt().toString()
+private fun formatAngleHint(pitchDeg: Float, rollDeg: Float, tiltDeg: Float): String? {
+    if (pitchDeg.isNaN() || rollDeg.isNaN() || tiltDeg.isNaN()) return null
+    return "tilt ${formatDeg(tiltDeg)}° / pitch ${formatDeg(pitchDeg)}° / roll ${formatDeg(rollDeg)}°"
+}
+
+private fun formatDeg(value: Float): String = value.toInt().toString()
 
 private fun probabilityPercent(probability: Float): Int? {
     if (probability.isNaN()) return null
