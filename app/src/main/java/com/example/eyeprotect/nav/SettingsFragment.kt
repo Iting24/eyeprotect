@@ -9,19 +9,21 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatDelegate
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.AssistChip
@@ -33,16 +35,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 import com.example.eyeprotect.R
 import com.example.eyeprotect.ui.theme.EyeprotectTheme
 import dagger.hilt.android.AndroidEntryPoint
+
+private val WarmDarkPageBackground = Color(0xFF1C1510)
+private val WarmDarkCardBackground = Color(0xFF2C2118)
+private val WarmDarkCardTitleText = Color(0xFFEEE8E0)
+private val WarmDarkCardBodyText = Color(0xFFEEE8E0).copy(alpha = 0.6f)
+private val WarmSwitchCheckedColor = Color(0xFFD4785A)
 
 @AndroidEntryPoint
 class SettingsFragment : Fragment() {
@@ -51,7 +61,11 @@ class SettingsFragment : Fragment() {
         return ComposeView(requireContext()).apply {
             setContent {
                 EyeprotectTheme {
-                    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                    val isDarkTheme = isSystemInDarkTheme()
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = if (isDarkTheme) WarmDarkPageBackground else MaterialTheme.colorScheme.background
+                    ) {
                         SettingsScreen(
                             onOpenCalibration = {
                                 findNavController().navigate(R.id.calibrationFragment)
@@ -68,6 +82,16 @@ class SettingsFragment : Fragment() {
 private fun SettingsScreen(
     onOpenCalibration: () -> Unit
 ) {
+    val isDarkTheme = isSystemInDarkTheme()
+    val cardContainerColor = if (isDarkTheme) WarmDarkCardBackground else Color(0xFFFFFFFF)
+    val cardTitleTextColor = if (isDarkTheme) WarmDarkCardTitleText else MaterialTheme.colorScheme.onSurface
+    val cardBodyTextColor = if (isDarkTheme) WarmDarkCardBodyText else MaterialTheme.colorScheme.onSurfaceVariant
+    val switchColors = SwitchDefaults.colors(
+        checkedTrackColor = WarmSwitchCheckedColor,
+        checkedThumbColor = Color.White,
+        checkedBorderColor = WarmSwitchCheckedColor
+    )
+
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences(com.example.eyeprotect.PreferenceKeys.PREFS_NAME, Context.MODE_PRIVATE) }
 
@@ -91,44 +115,84 @@ private fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Text(stringResource(id = R.string.title_settings), style = MaterialTheme.typography.headlineSmall)
-        Text(stringResource(id = R.string.settings_subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            stringResource(id = R.string.settings_subtitle),
+            color = if (isDarkTheme) WarmDarkCardBodyText else MaterialTheme.colorScheme.onSurfaceVariant
+        )
 
         Card(
-            shape = RoundedCornerShape(22.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
-            elevation = CardDefaults.cardElevation(0.dp)
+            modifier = Modifier
+                .shadow(
+                    elevation = 8.dp,
+                    shape = RoundedCornerShape(20.dp),
+                    ambientColor = Color(0xFF000000).copy(alpha = 0.06f),
+                    spotColor = Color(0xFF000000).copy(alpha = 0.04f)
+                )
+                .fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = cardContainerColor
+            ),
+            elevation = CardDefaults.cardElevation(
+                defaultElevation = 0.dp
+            )
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text(stringResource(id = R.string.eye_settings_section_calibration), style = MaterialTheme.typography.titleMedium)
+                Text(
+                    stringResource(id = R.string.eye_settings_section_calibration),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = cardTitleTextColor
+                )
                 Text(
                     text = "更新你的眼睛距離、睜眼程度與坐姿基準。",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = cardBodyTextColor,
                     style = MaterialTheme.typography.bodySmall
                 )
-                Button(onClick = onOpenCalibration) { Text(stringResource(id = R.string.start_calibration)) }
+                Button(
+                    onClick = onOpenCalibration,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF1A1A1A),
+                        contentColor = Color.White
+                    )
+                ) {
+                    Text(stringResource(id = R.string.start_calibration), color = Color.White)
+                }
             }
         }
 
         Card(
-            shape = RoundedCornerShape(22.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
-            elevation = CardDefaults.cardElevation(0.dp)
+            modifier = Modifier
+                .shadow(
+                    elevation = 8.dp,
+                    shape = RoundedCornerShape(20.dp),
+                    ambientColor = Color(0xFF000000).copy(alpha = 0.06f),
+                    spotColor = Color(0xFF000000).copy(alpha = 0.04f)
+                )
+                .fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = cardContainerColor
+            ),
+            elevation = CardDefaults.cardElevation(
+                defaultElevation = 0.dp
+            )
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Text("外觀", style = MaterialTheme.typography.titleMedium)
+                Text("外觀", style = MaterialTheme.typography.titleMedium, color = cardTitleTextColor)
 
                 FeatureToggleRow(
                     title = stringResource(id = R.string.eye_settings_dark_mode_title),
                     description = stringResource(id = R.string.eye_settings_dark_mode_desc),
                     checked = darkModeEnabled,
+                    titleColor = cardTitleTextColor,
+                    descriptionColor = cardBodyTextColor,
+                    switchColors = switchColors,
                     onCheckedChange = { enabled ->
                         darkModeEnabled = enabled
                         prefs.edit().putBoolean(com.example.eyeprotect.PreferenceKeys.PREF_DARK_MODE_ENABLED, enabled).apply()
@@ -138,13 +202,20 @@ private fun SettingsScreen(
                     }
                 )
 
-                Text(stringResource(id = R.string.eye_settings_section_features), style = MaterialTheme.typography.titleMedium)
+                Text(
+                    stringResource(id = R.string.eye_settings_section_features),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = cardTitleTextColor
+                )
 
                 FeatureToggleRow(
                     title = stringResource(id = R.string.eye_settings_eye_exercise_title),
                     description = stringResource(id = R.string.eye_settings_eye_exercise_desc),
                     checked = autoEyeExerciseEnabled,
                     beta = true,
+                    titleColor = cardTitleTextColor,
+                    descriptionColor = cardBodyTextColor,
+                    switchColors = switchColors,
                     onCheckedChange = { enabled ->
                         autoEyeExerciseEnabled = enabled
                         prefs.edit().putBoolean(com.example.eyeprotect.PreferenceKeys.PREF_AUTO_EYE_EXERCISE_ENABLED, enabled).apply()
@@ -154,7 +225,7 @@ private fun SettingsScreen(
                 if (autoEyeExerciseEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(context)) {
                     Text(
                         text = stringResource(id = R.string.eye_settings_overlay_permission_hint),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = cardBodyTextColor,
                         style = MaterialTheme.typography.bodySmall
                     )
                     Button(onClick = { requestOverlayPermission(context) }) {
@@ -167,6 +238,9 @@ private fun SettingsScreen(
                     description = stringResource(id = R.string.eye_settings_walk_detection_desc),
                     checked = walkDetectionEnabled,
                     beta = true,
+                    titleColor = cardTitleTextColor,
+                    descriptionColor = cardBodyTextColor,
+                    switchColors = switchColors,
                     onCheckedChange = { enabled ->
                         walkDetectionEnabled = enabled
                         prefs.edit().putBoolean(com.example.eyeprotect.PreferenceKeys.PREF_WALK_DETECTION_ENABLED, enabled).apply()
@@ -177,6 +251,9 @@ private fun SettingsScreen(
                     title = stringResource(id = R.string.eye_settings_auto_night_title),
                     description = stringResource(id = R.string.eye_settings_auto_night_desc),
                     checked = autoNightEnabled,
+                    titleColor = cardTitleTextColor,
+                    descriptionColor = cardBodyTextColor,
+                    switchColors = switchColors,
                     onCheckedChange = { enabled ->
                         autoNightEnabled = enabled
                         prefs.edit().putBoolean(com.example.eyeprotect.PreferenceKeys.PREF_AUTO_NIGHT_MODE_ENABLED, enabled).apply()
@@ -192,6 +269,9 @@ private fun FeatureToggleRow(
     title: String,
     description: String,
     checked: Boolean,
+    titleColor: Color,
+    descriptionColor: Color,
+    switchColors: androidx.compose.material3.SwitchColors,
     beta: Boolean = false,
     onCheckedChange: (Boolean) -> Unit
 ) {
@@ -201,19 +281,23 @@ private fun FeatureToggleRow(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(title, style = MaterialTheme.typography.titleSmall)
+                Text(title, style = MaterialTheme.typography.titleSmall, color = titleColor)
                 if (beta) {
                     AssistChip(
                         onClick = {},
                         enabled = false,
-                        label = { Text("Beta") }
+                        label = { Text("Beta", color = descriptionColor) }
                     )
                 }
             }
-            Text(description, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            Text(description, color = descriptionColor, style = MaterialTheme.typography.bodySmall)
         }
         Spacer(Modifier.width(12.dp))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = switchColors
+        )
     }
 }
 

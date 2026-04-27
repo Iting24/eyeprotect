@@ -3,15 +3,23 @@ package com.example.eyeprotect
 import android.os.Bundle
 import android.view.MenuItem
 import android.view.View
-import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.zIndex
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -22,14 +30,12 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
-import com.google.android.material.bottomnavigation.BottomNavigationView
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.NavigationUI.onNavDestinationSelected
+import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.example.eyeprotect.ui.theme.EyeprotectTheme
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -72,18 +78,14 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<ConstraintLayout>(R.id.main_root).addView(
             composeBottomNav,
-            ConstraintLayout.LayoutParams(0, 86.dpToPx()).apply {
-                marginStart = 22.dpToPx()
-                marginEnd = 22.dpToPx()
-                bottomMargin = 12.dpToPx()
+            ConstraintLayout.LayoutParams(0, 0).apply {
                 startToStart = ConstraintLayout.LayoutParams.PARENT_ID
                 endToEnd = ConstraintLayout.LayoutParams.PARENT_ID
+                topToTop = ConstraintLayout.LayoutParams.PARENT_ID
                 bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
             }
         )
     }
-
-    private fun Int.dpToPx(): Int = (this * resources.displayMetrics.density).toInt()
 }
 
 private data class BottomNavItem(
@@ -100,57 +102,58 @@ private fun EyeProtectBottomNavigationBar(
     selectedDestinationId: Int,
     onNavigate: (BottomNavItem) -> Unit
 ) {
-    val indicatorColor = Color(0xFF2F7EF5).copy(alpha = 0.12f)
+    val isDarkTheme = isSystemInDarkTheme()
+    val tabBarColor = if (isDarkTheme) Color(0xFF2A2420) else Color(0xFF1A1A1A)
 
-    NavigationBar(
-        containerColor = MaterialTheme.colorScheme.surface,
-        tonalElevation = 0.dp,
-        windowInsets = WindowInsets(0.dp)
-    ) {
-        items.forEach { item ->
-            EyeProtectNavigationItem(
-                item = item,
-                selected = selectedDestinationId == item.destinationId,
-                indicatorColor = indicatorColor,
-                onClick = { onNavigate(item) }
-            )
+    Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .zIndex(10f)
+                .padding(start = 32.dp, end = 32.dp, bottom = 24.dp)
+                .fillMaxWidth()
+                .height(64.dp)
+                .clip(RoundedCornerShape(32.dp))
+                .background(tabBarColor),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items.forEach { item ->
+                    EyeProtectNavigationItem(
+                        item = item,
+                        selected = selectedDestinationId == item.destinationId,
+                        onClick = { onNavigate(item) }
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun RowScope.EyeProtectNavigationItem(
+private fun EyeProtectNavigationItem(
     item: BottomNavItem,
     selected: Boolean,
-    indicatorColor: Color,
     onClick: () -> Unit
 ) {
-    NavigationBarItem(
-        selected = selected,
-        onClick = onClick,
-        alwaysShowLabel = true,
-        icon = {
-            Icon(
-                painter = painterResource(id = if (selected) item.selectedIconRes else item.iconRes),
-                contentDescription = stringResource(id = item.labelRes),
-                modifier = Modifier.size(22.dp)
-            )
-        },
-        label = {
-            Text(
-                text = stringResource(id = item.labelRes),
-                fontSize = 10.sp,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
-            )
-        },
-        colors = NavigationBarItemDefaults.colors(
-            selectedIconColor = Color(0xFF2F7EF5),
-            selectedTextColor = Color(0xFF2F7EF5),
-            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            indicatorColor = indicatorColor
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .background(if (selected) Color.White else Color.Transparent)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            painter = painterResource(id = if (selected) item.selectedIconRes else item.iconRes),
+            contentDescription = stringResource(id = item.labelRes),
+            modifier = Modifier.size(22.dp),
+            tint = if (selected) Color(0xFF1A1A1A) else Color.White.copy(alpha = 0.5f)
         )
-    )
+    }
 }
 
 private fun android.view.Menu.toBottomNavItems(): List<BottomNavItem> {
