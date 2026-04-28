@@ -3,7 +3,12 @@ package com.example.eyeprotect
 import android.os.Bundle
 import android.view.MenuItem
 import android.view.View
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,9 +20,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.zIndex
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
@@ -36,6 +42,7 @@ import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.NavigationUI.onNavDestinationSelected
 import com.google.android.material.bottomnavigation.BottomNavigationView
+import com.example.eyeprotect.ui.theme.EyeDesignTokens
 import com.example.eyeprotect.ui.theme.EyeprotectTheme
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -102,19 +109,30 @@ private fun EyeProtectBottomNavigationBar(
     selectedDestinationId: Int,
     onNavigate: (BottomNavItem) -> Unit
 ) {
-    val isDarkTheme = isSystemInDarkTheme()
-    val tabBarColor = if (isDarkTheme) Color(0xFF2A2420) else Color(0xFF1A1A1A)
+    val elevation = EyeDesignTokens.elevation
+    val pillBackground = Color(0xFF1C1C1E)
+    val navShape = RoundedCornerShape(40.dp)
 
     Box(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .zIndex(10f)
-                .padding(start = 32.dp, end = 32.dp, bottom = 24.dp)
+                .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
                 .fillMaxWidth()
-                .height(64.dp)
-                .clip(RoundedCornerShape(32.dp))
-                .background(tabBarColor),
+                .height(62.dp)
+                .shadow(
+                    elevation = elevation.high + 2.dp,
+                    shape = navShape,
+                    ambientColor = Color(0xFF000000).copy(alpha = 0.16f),
+                    spotColor = Color(0xFF000000).copy(alpha = 0.10f)
+                )
+                .border(
+                    border = BorderStroke(0.5.dp, Color(0xFF3A3A3C)),
+                    shape = navShape
+                )
+                .clip(navShape)
+                .background(pillBackground),
             contentAlignment = Alignment.Center
         ) {
             Row(
@@ -139,20 +157,40 @@ private fun EyeProtectNavigationItem(
     selected: Boolean,
     onClick: () -> Unit
 ) {
+    val animatedSize by animateDpAsState(
+        targetValue = if (selected) 46.dp else 42.dp,
+        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+        label = "navItemSize"
+    )
     Box(
         modifier = Modifier
-            .size(48.dp)
-            .clip(CircleShape)
-            .background(if (selected) Color.White else Color.Transparent)
+            .size(animatedSize)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Icon(
-            painter = painterResource(id = if (selected) item.selectedIconRes else item.iconRes),
-            contentDescription = stringResource(id = item.labelRes),
-            modifier = Modifier.size(22.dp),
-            tint = if (selected) Color(0xFF1A1A1A) else Color.White.copy(alpha = 0.5f)
-        )
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Color.White),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = painterResource(id = item.selectedIconRes),
+                    contentDescription = stringResource(id = item.labelRes),
+                    modifier = Modifier.size(20.dp),
+                    tint = Color(0xFF000000)
+                )
+            }
+        } else {
+            Icon(
+                painter = painterResource(id = item.iconRes),
+                contentDescription = stringResource(id = item.labelRes),
+                modifier = Modifier.size(20.dp),
+                tint = Color(0xFF8E8E93)
+            )
+        }
     }
 }
 

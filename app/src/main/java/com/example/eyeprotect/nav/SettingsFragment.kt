@@ -27,6 +27,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.AssistChip
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,14 +46,14 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 import com.example.eyeprotect.R
+import com.example.eyeprotect.ui.theme.EyeDesignTokens
 import com.example.eyeprotect.ui.theme.EyeprotectTheme
 import dagger.hilt.android.AndroidEntryPoint
 
-private val WarmDarkPageBackground = Color(0xFF1C1510)
-private val WarmDarkCardBackground = Color(0xFF2C2118)
-private val WarmDarkCardTitleText = Color(0xFFEEE8E0)
-private val WarmDarkCardBodyText = Color(0xFFEEE8E0).copy(alpha = 0.6f)
-private val WarmSwitchCheckedColor = Color(0xFFD4785A)
+private val NeutralDarkPageBackground = Color(0xFF111111)
+private val NeutralDarkCardTitleText = Color(0xFFFFFFFF)
+private val NeutralDarkCardBodyText = Color(0xFF8E8E93)
+private val NeutralAccentColor = Color(0xFFFF8C69)
 
 @AndroidEntryPoint
 class SettingsFragment : Fragment() {
@@ -64,7 +65,7 @@ class SettingsFragment : Fragment() {
                     val isDarkTheme = isSystemInDarkTheme()
                     Surface(
                         modifier = Modifier.fillMaxSize(),
-                        color = if (isDarkTheme) WarmDarkPageBackground else MaterialTheme.colorScheme.background
+                        color = if (isDarkTheme) NeutralDarkPageBackground else MaterialTheme.colorScheme.background
                     ) {
                         SettingsScreen(
                             onOpenCalibration = {
@@ -83,13 +84,14 @@ private fun SettingsScreen(
     onOpenCalibration: () -> Unit
 ) {
     val isDarkTheme = isSystemInDarkTheme()
-    val cardContainerColor = if (isDarkTheme) WarmDarkCardBackground else Color(0xFFFFFFFF)
-    val cardTitleTextColor = if (isDarkTheme) WarmDarkCardTitleText else MaterialTheme.colorScheme.onSurface
-    val cardBodyTextColor = if (isDarkTheme) WarmDarkCardBodyText else MaterialTheme.colorScheme.onSurfaceVariant
+    val colors = EyeDesignTokens.colors
+    val cardContainerColor = colors.cardContainer
+    val cardTitleTextColor = if (isDarkTheme) NeutralDarkCardTitleText else MaterialTheme.colorScheme.onSurface
+    val cardBodyTextColor = if (isDarkTheme) NeutralDarkCardBodyText else MaterialTheme.colorScheme.onSurfaceVariant
     val switchColors = SwitchDefaults.colors(
-        checkedTrackColor = WarmSwitchCheckedColor,
+        checkedTrackColor = NeutralAccentColor,
         checkedThumbColor = Color.White,
-        checkedBorderColor = WarmSwitchCheckedColor
+        checkedBorderColor = NeutralAccentColor
     )
 
     val context = LocalContext.current
@@ -117,7 +119,7 @@ private fun SettingsScreen(
         Text(stringResource(id = R.string.title_settings), style = MaterialTheme.typography.headlineSmall)
         Text(
             stringResource(id = R.string.settings_subtitle),
-            color = if (isDarkTheme) WarmDarkCardBodyText else MaterialTheme.colorScheme.onSurfaceVariant
+            color = if (isDarkTheme) NeutralDarkCardBodyText else MaterialTheme.colorScheme.onSurfaceVariant
         )
 
         Card(
@@ -130,6 +132,7 @@ private fun SettingsScreen(
                 )
                 .fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
+            border = BorderStroke(0.5.dp, colors.borderSubtle),
             colors = CardDefaults.cardColors(
                 containerColor = cardContainerColor
             ),
@@ -173,6 +176,7 @@ private fun SettingsScreen(
                 )
                 .fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
+            border = BorderStroke(0.5.dp, colors.borderSubtle),
             colors = CardDefaults.cardColors(
                 containerColor = cardContainerColor
             ),

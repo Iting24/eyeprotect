@@ -30,6 +30,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
@@ -53,6 +54,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.example.eyeprotect.nav.BackToDashboardButton
+import com.example.eyeprotect.ui.theme.EyeDesignTokens
 import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetector
@@ -277,6 +279,8 @@ fun CalibrationScreen(
 
 @Composable
 private fun CalibrationWhyCard() {
+    val colors = EyeDesignTokens.colors
+    val cardContainerColor = colors.cardContainer
     Card(
         modifier = Modifier
             .shadow(
@@ -287,8 +291,9 @@ private fun CalibrationWhyCard() {
             )
             .fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(0.5.dp, colors.borderSubtle),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFFFFFFF)
+            containerColor = cardContainerColor
         ),
         elevation = CardDefaults.cardElevation(
             defaultElevation = 0.dp
@@ -337,6 +342,8 @@ private fun CalibrationProgressCard(
     postureCount: Int,
     hasError: Boolean
 ) {
+    val colors = EyeDesignTokens.colors
+    val cardContainerColor = colors.cardContainer
     Card(
         modifier = Modifier
             .shadow(
@@ -347,8 +354,9 @@ private fun CalibrationProgressCard(
             )
             .fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(0.5.dp, colors.borderSubtle),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFFFFFFF)
+            containerColor = cardContainerColor
         ),
         elevation = CardDefaults.cardElevation(
             defaultElevation = 0.dp

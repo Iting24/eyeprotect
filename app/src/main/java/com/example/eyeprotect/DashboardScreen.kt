@@ -11,7 +11,18 @@ import android.os.SystemClock
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -27,6 +38,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -35,6 +47,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Button
@@ -46,6 +59,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -69,10 +83,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -80,6 +96,7 @@ import androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.example.eyeprotect.monitoring.MonitoringForegroundService
+import com.example.eyeprotect.ui.theme.EyeDesignTokens
 import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
@@ -87,21 +104,24 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
 private const val HISTORY_MAX_POINTS = 120
-private val WarmDarkPageBackground = Color(0xFF1C1510)
-private val WarmDarkCardBackground = Color(0xFF2C2118)
-private val WarmDarkMetricSubcardBackground = Color(0xFF352820)
-private val WarmDarkCardTitleText = Color(0xFFEEE8E0)
-private val WarmDarkCardBodyText = Color(0xFFEEE8E0).copy(alpha = 0.7f)
-private val WarmDarkCardIncompleteStepText = Color(0xFFEEE8E0).copy(alpha = 0.35f)
-
 @Composable
 private fun cardTitleTextColor(): Color {
-    return if (isSystemInDarkTheme()) WarmDarkCardTitleText else MaterialTheme.colorScheme.onSurface
+    return EyeDesignTokens.colors.textPrimary
 }
 
 @Composable
 private fun cardBodyTextColor(): Color {
-    return if (isSystemInDarkTheme()) WarmDarkCardBodyText else MaterialTheme.colorScheme.onSurfaceVariant
+    return EyeDesignTokens.colors.textSecondary
+}
+
+@Composable
+private fun groupedSectionBackground(): Color {
+    return EyeDesignTokens.colors.surfaceSubtle
+}
+
+@Composable
+private fun groupedSectionBorder(): Color {
+    return EyeDesignTokens.colors.borderSubtle
 }
 
 @Composable
@@ -113,9 +133,11 @@ fun DashboardScreen(
     onRequestPermission: (() -> Unit)? = null,
     onReCalibrate: (() -> Unit)? = null
 ) {
+    val isDarkTheme = isSystemInDarkTheme()
     val context = androidx.compose.ui.platform.LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val isDarkTheme = isSystemInDarkTheme()
+    val colors = EyeDesignTokens.colors
+    val spacing = EyeDesignTokens.spacing
     val prefs = remember { context.getSharedPreferences(PreferenceKeys.PREFS_NAME, Context.MODE_PRIVATE) }
     var monitoringEnabled by remember {
         mutableStateOf(prefs.getBoolean(EyeHealthAccessibilityService.PREF_MONITORING_ENABLED, false))
@@ -255,9 +277,26 @@ fun DashboardScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(if (isDarkTheme) WarmDarkPageBackground else Color(0xFFFAF7F4))
+            .background(
+                if (isDarkTheme) {
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFF111111),
+                            Color(0xFF111111)
+                        )
+                    )
+                } else {
+                    Brush.verticalGradient(
+                        colorStops = arrayOf(
+                            0.0f to Color(0xFFFFD4C2),
+                            0.35f to Color(0xFFFFE8DF),
+                            0.55f to Color(0xFFFFF5F2),
+                            1.0f to Color(0xFFF2F2F7)
+                        )
+                    )
+                }
+            )
     ) {
-
         val alertsReady = monitoringReady && isServiceEnabled
         val statusLabel = when {
             !monitoringReady -> "尚未完成設定"
@@ -302,25 +341,17 @@ fun DashboardScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 18.dp),
+                .background(Color.Transparent)
+                .padding(horizontal = spacing.lg),
             state = dashboardListState,
-            contentPadding = PaddingValues(vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            contentPadding = PaddingValues(top = spacing.xs, bottom = spacing.md),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm)
         ) {
             item {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(
-                            brush = Brush.verticalGradient(
-                                colors = listOf(
-                                    Color(0xFFFFD4C2),
-                                    Color(0xFFFAF7F4)
-                                ),
-                                startY = 0f,
-                                endY = 400f
-                            )
-                        )
+                        .padding(bottom = spacing.xs)
                 ) {
                     DashboardHeader(
                         monitoringEnabled = monitoringEnabled,
@@ -427,6 +458,7 @@ private fun DashboardSummaryCard(
     faceError: Boolean,
     poseError: Boolean
 ) {
+    val text = EyeDesignTokens.typography
     var nowUptime by remember { mutableLongStateOf(SystemClock.uptimeMillis()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -477,14 +509,13 @@ private fun DashboardSummaryCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = headline,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.ExtraBold,
+                    style = text.sectionTitle,
                     color = cardTitleTextColor()
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = subtitle,
-                    fontSize = 13.sp,
+                    style = text.bodySmall,
                     color = cardBodyTextColor(),
                     lineHeight = 18.sp
                 )
@@ -589,14 +620,13 @@ private fun MetricOverviewCard(
     val posturePct = ratioPercent(postureRatio, postureThreshold)
     val lyingPct = horizontalPercentFromTilt(tiltDeg)
 
-    val isDarkTheme = isSystemInDarkTheme()
+    val text = EyeDesignTokens.typography
 
     GlassCard {
         Text(
             text = "今日重點",
-            fontSize = if (isDarkTheme) 18.sp else 20.sp,
-            fontWeight = if (isDarkTheme) FontWeight.ExtraBold else FontWeight.Bold,
-            color = if (isDarkTheme) WarmDarkCardTitleText else Color(0xFF1A1A1A)
+            style = text.sectionTitle,
+            color = cardTitleTextColor()
         )
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -700,41 +730,51 @@ private fun SummaryMetricRow(
     onToggle: (HistoryMetric) -> Unit,
     detail: @Composable () -> Unit
 ) {
-    val isDarkTheme = isSystemInDarkTheme()
-    val containerColor = if (isDarkTheme) WarmDarkMetricSubcardBackground else Color(0xFFFFFFFF)
-    val cardShape = RoundedCornerShape(16.dp)
+    val spacing = EyeDesignTokens.spacing
+    val cardShape = RoundedCornerShape(24.dp)
+    val sectionBackground = groupedSectionBackground()
+    val sectionBorder = groupedSectionBorder()
+    val arrowRotation by animateFloatAsState(
+        targetValue = if (expanded) 90f else 0f,
+        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+        label = "summaryArrowRotation"
+    )
 
     Column(
         modifier = Modifier
+            .animateContentSize(animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing))
             .shadow(
                 elevation = 4.dp,
                 shape = cardShape,
-                ambientColor = Color.Black.copy(alpha = 0.05f)
+                ambientColor = Color.Black.copy(alpha = 0.04f),
+                spotColor = Color.Black.copy(alpha = 0.03f)
             )
             .fillMaxWidth()
             .clip(cardShape)
             .clickable { onToggle(metric) }
-            .background(containerColor)
+            .background(sectionBackground)
             .border(
-                BorderStroke(1.dp, Color(0xFFE8DDD5)),
+                BorderStroke(0.5.dp, sectionBorder),
                 cardShape
             )
-            .padding(14.dp)
+            .padding(20.dp)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .defaultMinSize(minHeight = 72.dp)
+                .padding(vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                 SummaryMetricIcon(metric = metric)
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(16.dp))
                 Column {
-                    Text(text = title, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = cardTitleTextColor())
+                    Text(text = title, style = EyeDesignTokens.typography.bodyStrong, color = cardTitleTextColor())
                     Text(
                         text = status,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
+                        style = EyeDesignTokens.typography.bodySmall,
                         color = if (warning) MaterialTheme.colorScheme.error else cardBodyTextColor()
                     )
                 }
@@ -744,16 +784,36 @@ private fun SummaryMetricRow(
                 fontSize = 24,
                 color = cardTitleTextColor()
             )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(text = if (expanded) "⌃" else "›", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = cardBodyTextColor())
+            Spacer(modifier = Modifier.width(spacing.xs))
+            Text(
+                text = "›",
+                modifier = Modifier.graphicsLayer { rotationZ = arrowRotation },
+                style = EyeDesignTokens.typography.cardTitle,
+                fontWeight = FontWeight.Bold,
+                color = cardBodyTextColor()
+            )
         }
 
-        if (expanded) {
-            Spacer(modifier = Modifier.height(12.dp))
-            detail()
+        AnimatedVisibility(
+            visible = expanded,
+            enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = tween(220)) + slideInVertically(
+                initialOffsetY = { -it / 6 },
+                animationSpec = tween(220, easing = FastOutSlowInEasing)
+            ),
+            exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = tween(180)) + slideOutVertically(
+                targetOffsetY = { -it / 8 },
+                animationSpec = tween(160, easing = FastOutSlowInEasing)
+            )
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(spacing.sm)
+            ) {
+                detail()
+            }
         }
     }
-    Spacer(modifier = Modifier.height(10.dp))
+    Spacer(modifier = Modifier.height(spacing.xs))
 }
 
 private data class SummaryMetricIconStyle(
@@ -762,26 +822,28 @@ private data class SummaryMetricIconStyle(
     val iconRes: Int
 )
 
+@Composable
 private fun summaryMetricIconStyle(metric: HistoryMetric): SummaryMetricIconStyle {
+    val colors = EyeDesignTokens.colors
     return when (metric) {
         HistoryMetric.DISTANCE -> SummaryMetricIconStyle(
-            background = Color(0xFFFFDDD0),
-            tint = Color(0xFFE97A38),
+            background = colors.metricDistanceBg,
+            tint = colors.metricDistanceFg,
             iconRes = R.drawable.ic_nav_vision
         )
         HistoryMetric.EYE_OPEN -> SummaryMetricIconStyle(
-            background = Color(0xFFD4EDD4),
-            tint = Color(0xFF4B8B5C),
+            background = colors.metricBlinkBg,
+            tint = colors.metricBlinkFg,
             iconRes = R.drawable.ic_nav_dashboard_eye_open
         )
         HistoryMetric.POSTURE -> SummaryMetricIconStyle(
-            background = Color(0xFFE8E0F5),
-            tint = Color(0xFF7A58A8),
+            background = colors.metricPostureBg,
+            tint = colors.metricPostureFg,
             iconRes = R.drawable.ic_nav_exercise
         )
         HistoryMetric.LYING -> SummaryMetricIconStyle(
-            background = Color(0xFFFFD6D6),
-            tint = Color(0xFFE06C9A),
+            background = colors.metricLyingBg,
+            tint = colors.metricLyingFg,
             iconRes = R.drawable.ic_warning
         )
     }
@@ -792,8 +854,8 @@ private fun SummaryMetricIcon(metric: HistoryMetric) {
     val style = summaryMetricIconStyle(metric)
     Box(
         modifier = Modifier
-            .size(40.dp)
-            .clip(CircleShape)
+            .size(48.dp)
+            .clip(RoundedCornerShape(14.dp))
             .background(style.background),
         contentAlignment = Alignment.Center
     ) {
@@ -801,7 +863,7 @@ private fun SummaryMetricIcon(metric: HistoryMetric) {
             painter = painterResource(id = style.iconRes),
             contentDescription = null,
             tint = style.tint,
-            modifier = Modifier.size(20.dp)
+            modifier = Modifier.size(22.dp)
         )
     }
 }
@@ -878,64 +940,83 @@ private fun ExpandableMonitoringStatusCard(
         !alertsReady -> "收集中，提醒未完整啟用"
         else -> "監測更新中"
     }
+    val spacing = EyeDesignTokens.spacing
+    val text = EyeDesignTokens.typography
+    val arrowRotation by animateFloatAsState(
+        targetValue = if (expanded) 90f else 0f,
+        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+        label = "monitoringArrowRotation"
+    )
 
     GlassCard {
         Column(
             modifier = Modifier
+                .animateContentSize(animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing))
                 .fillMaxWidth()
                 .clickable(onClick = onToggle)
         ) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(text = "監測細節", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = cardTitleTextColor())
-                    Text(text = title, fontSize = 13.sp, color = if (stale) MaterialTheme.colorScheme.error else cardBodyTextColor())
+                    Text(text = "監測細節", style = text.sectionTitle, color = cardTitleTextColor())
+                    Text(text = title, style = text.bodySmall, color = if (stale) MaterialTheme.colorScheme.error else cardBodyTextColor())
                 }
-                Text(text = if (expanded) "⌃" else "›", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = cardBodyTextColor())
+                Text(
+                    text = "›",
+                    modifier = Modifier.graphicsLayer { rotationZ = arrowRotation },
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = cardBodyTextColor()
+                )
             }
 
-            if (expanded) {
-                Spacer(modifier = Modifier.height(12.dp))
-                val lastUpdateText = when {
-                    ageSec == null -> null
-                    ageSec <= 1 -> "剛剛"
-                    else -> "${ageSec}s 前"
-                }
-                val faceText = when {
-                    faceAgeSec == null -> null
-                    faceAgeSec <= 1 -> "剛剛"
-                    else -> "${faceAgeSec}s 前"
-                }
-                SkeletonInfoLine(label = "最後更新：", value = lastUpdateText)
-                SkeletonInfoLine(label = "最近偵測到臉：", value = faceText)
-                Text(
-                    text = "資料來源：${if (lastWasCameraFrame) "相機 + 感測器" else "感測器"}",
-                    fontSize = 13.sp,
-                    color = cardBodyTextColor()
-                )
-                Text(
-                    text = "臉部：${qualityText(faceDetected, faceError)} / 姿勢：${qualityText(poseDetected, poseError)}",
-                    fontSize = 13.sp,
-                    color = cardBodyTextColor()
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                AngleInfoLine(pitchDeg = pitchDeg, rollDeg = rollDeg, tiltDeg = tiltDeg)
-                if (monitoringEnabled && !alertsReady) {
-                    Spacer(modifier = Modifier.height(10.dp))
+            AnimatedVisibility(
+                visible = expanded,
+                enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = tween(220)),
+                exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = tween(180))
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(spacing.xs)
+                ) {
+                    val lastUpdateText = when {
+                        ageSec == null -> null
+                        ageSec <= 1 -> "剛剛"
+                        else -> "${ageSec}s 前"
+                    }
+                    val faceText = when {
+                        faceAgeSec == null -> null
+                        faceAgeSec <= 1 -> "剛剛"
+                        else -> "${faceAgeSec}s 前"
+                    }
+                    SkeletonInfoLine(label = "最後更新：", value = lastUpdateText)
+                    SkeletonInfoLine(label = "最近偵測到臉：", value = faceText)
                     Text(
-                        text = "資料蒐集已啟動，但若未開啟無障礙服務，跨 app 語音與遮罩提醒會受限。",
-                        fontSize = 12.sp,
-                        color = cardBodyTextColor(),
-                        lineHeight = 16.sp
+                        text = "資料來源：${if (lastWasCameraFrame) "相機 + 感測器" else "感測器"}",
+                        fontSize = 13.sp,
+                        color = cardBodyTextColor()
                     )
-                }
-                if (stale) {
-                    Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        text = "可能原因：前景服務被系統停止、相機權限/前鏡頭被占用，或系統省電限制導致背景停止。",
-                        fontSize = 12.sp,
-                        color = cardBodyTextColor(),
-                        lineHeight = 16.sp
+                        text = "臉部：${qualityText(faceDetected, faceError)} / 姿勢：${qualityText(poseDetected, poseError)}",
+                        fontSize = 13.sp,
+                        color = cardBodyTextColor()
                     )
+                    AngleInfoLine(pitchDeg = pitchDeg, rollDeg = rollDeg, tiltDeg = tiltDeg)
+                    if (monitoringEnabled && !alertsReady) {
+                        Text(
+                            text = "資料蒐集已啟動，但若未開啟無障礙服務，跨 app 語音與遮罩提醒會受限。",
+                            fontSize = 12.sp,
+                            color = cardBodyTextColor(),
+                            lineHeight = 16.sp
+                        )
+                    }
+                    if (stale) {
+                        Text(
+                            text = "可能原因：前景服務被系統停止、相機權限/前鏡頭被占用，或系統省電限制導致背景停止。",
+                            fontSize = 12.sp,
+                            color = cardBodyTextColor(),
+                            lineHeight = 16.sp
+                        )
+                    }
                 }
             }
         }
@@ -952,6 +1033,7 @@ private fun MonitoringStatusCard(
     rollDeg: Float,
     tiltDeg: Float
 ) {
+    val text = EyeDesignTokens.typography
     var nowUptime by remember { mutableLongStateOf(SystemClock.uptimeMillis()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -974,8 +1056,7 @@ private fun MonitoringStatusCard(
         Column(modifier = Modifier.fillMaxWidth()) {
             Text(
                 text = title,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.ExtraBold,
+                style = text.sectionTitle,
                 color = if (stale) MaterialTheme.colorScheme.error else cardTitleTextColor()
             )
             Spacer(modifier = Modifier.height(6.dp))
@@ -1023,7 +1104,7 @@ private fun MonitoringStatusCard(
 @Composable
 private fun ScoreRing(score: Int, monitoringReady: Boolean, warning: Boolean, modifier: Modifier = Modifier) {
     if (!monitoringReady) {
-        val setupColor = if (isSystemInDarkTheme()) WarmDarkCardTitleText else Color(0xFF1A1A1A)
+        val setupColor = EyeDesignTokens.colors.textPrimary
         Box(
             modifier = modifier
                 .size(72.dp)
@@ -1134,12 +1215,14 @@ private fun StatePill(text: String, active: Boolean) {
 
 @Composable
 private fun StatePill(label: String?, value: String?, active: Boolean) {
+    val colors = EyeDesignTokens.colors
+    val text = EyeDesignTokens.typography
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
+            .clip(EyeDesignTokens.chipShape)
             .background(
-                if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                else MaterialTheme.colorScheme.surfaceVariant
+                if (active) colors.accentPrimary.copy(alpha = 0.12f)
+                else colors.surfaceSubtle
             )
             .padding(horizontal = 10.dp, vertical = 6.dp)
     ) {
@@ -1147,7 +1230,7 @@ private fun StatePill(label: String?, value: String?, active: Boolean) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     text = label,
-                    fontSize = 12.sp,
+                    style = text.caption,
                     color = cardBodyTextColor()
                 )
                 if (value == null) {
@@ -1155,9 +1238,9 @@ private fun StatePill(label: String?, value: String?, active: Boolean) {
                 } else {
                     Text(
                         text = value,
-                        fontSize = 12.sp,
+                        style = text.caption,
                         fontWeight = FontWeight.Bold,
-                        color = if (isSystemInDarkTheme()) cardBodyTextColor() else if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        color = if (active) colors.accentPrimary else cardBodyTextColor()
                     )
                 }
             }
@@ -1165,9 +1248,9 @@ private fun StatePill(label: String?, value: String?, active: Boolean) {
             if (value != null) {
                 Text(
                     text = value,
-                    fontSize = 12.sp,
+                    style = text.caption,
                     fontWeight = FontWeight.Bold,
-                    color = if (isSystemInDarkTheme()) cardBodyTextColor() else if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (active) colors.accentPrimary else cardBodyTextColor()
                 )
             }
         }
@@ -1239,34 +1322,84 @@ private fun DashboardHeader(
     statusLabel: String,
     onToggleMonitoring: (Boolean) -> Unit
 ) {
-    Row(
+    val colors = EyeDesignTokens.colors
+    val spacing = EyeDesignTokens.spacing
+    val text = EyeDesignTokens.typography
+    val statusColor by animateColorAsState(
+        targetValue = if (monitoringEnabled) colors.accentSecondary else colors.textSecondary,
+        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+        label = "headerStatusColor"
+    )
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 2.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+            .padding(top = 32.dp, bottom = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column {
-            Text(
-                text = "眼睛健康概覽",
-                fontSize = 26.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.onBackground
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .shadow(
+                    elevation = 10.dp,
+                    shape = CircleShape,
+                    ambientColor = Color.Black.copy(alpha = 0.08f),
+                    spotColor = Color.Black.copy(alpha = 0.06f)
+                )
+                .clip(CircleShape)
+                .background(Color.White),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_eye_health),
+                contentDescription = null,
+                tint = colors.accentPrimary,
+                modifier = Modifier.size(20.dp)
             )
-            Text(text = "護眼監測與趨勢", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
-        Column(horizontalAlignment = Alignment.End) {
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            text = "護眼監測與趨勢",
+            fontSize = 13.sp,
+            lineHeight = 16.sp,
+            fontWeight = FontWeight.Normal,
+            color = colors.textSecondary,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "眼睛健康概覽",
+            fontSize = 40.sp,
+            lineHeight = 44.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = (-0.5).sp,
+            color = colors.textPrimary,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
             Text(
                 text = statusLabel,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (monitoringEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                style = text.bodySmall,
+                color = statusColor,
+                textAlign = TextAlign.Center
             )
             Switch(
                 checked = monitoringEnabled,
                 onCheckedChange = onToggleMonitoring,
-                enabled = toggleEnabled
+                enabled = toggleEnabled,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = colors.navActiveContainer,
+                    checkedTrackColor = colors.accentPrimary,
+                    uncheckedThumbColor = colors.textTertiary,
+                    uncheckedTrackColor = colors.surfaceSubtle,
+                    disabledUncheckedTrackColor = colors.surfaceSubtle.copy(alpha = 0.7f),
+                    disabledUncheckedThumbColor = colors.textTertiary.copy(alpha = 0.7f)
+                )
             )
         }
     }
@@ -1285,6 +1418,8 @@ private fun SetupCard(
     onOpenAccessibilitySettings: () -> Unit,
     onEnableMonitoring: (() -> Unit)?
 ) {
+    val spacing = EyeDesignTokens.spacing
+    val text = EyeDesignTokens.typography
     val currentStep = when {
         !hasCameraPermission -> SetupStep.CAMERA
         !hasCalibrated -> SetupStep.CALIBRATION
@@ -1309,11 +1444,11 @@ private fun SetupCard(
 
     GlassCard {
         Column(modifier = Modifier.fillMaxWidth()) {
-            Text(text = title, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = cardTitleTextColor())
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(text = subtitle, fontSize = 13.sp, color = cardBodyTextColor(), lineHeight = 18.sp)
+            Text(text = title, style = text.bodyStrong, color = cardTitleTextColor())
+            Spacer(modifier = Modifier.height(spacing.xs - 2.dp))
+            Text(text = subtitle, style = text.bodySmall, color = cardBodyTextColor(), lineHeight = 18.sp)
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(spacing.sm))
             Column {
                 SetupStepRow(1, "授權相機", done = hasCameraPermission, isCurrent = currentStep == SetupStep.CAMERA)
                 SetupStepRow(2, "完成校正", done = hasCalibrated, isCurrent = currentStep == SetupStep.CALIBRATION)
@@ -1322,8 +1457,8 @@ private fun SetupCard(
                 SetupStepRow(5, "開啟無障礙提醒", done = isServiceEnabled, isCurrent = currentStep == SetupStep.ACCESSIBILITY, isLast = true)
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Spacer(modifier = Modifier.height(spacing.sm))
+            Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs + 2.dp)) {
                 if (primaryLabel != null) {
                     if (currentStep == SetupStep.CAMERA) {
                         CameraPermissionButton(onClick = primaryAction)
@@ -1348,13 +1483,12 @@ private data class Quad(
 
 @Composable
 private fun SetupStepRow(index: Int, label: String, done: Boolean, isCurrent: Boolean, isLast: Boolean = false) {
-    val isDarkTheme = isSystemInDarkTheme()
-    val activeBlue = Color(0xFF1A1A1A)
-    val futureGrey = Color(0xFF666666)
+    val colors = EyeDesignTokens.colors
+    val activeBlue = colors.accentPrimary
+    val futureGrey = colors.textTertiary
     val stepLabelColor = when {
-        done || isCurrent -> if (isDarkTheme) WarmDarkCardTitleText else MaterialTheme.colorScheme.onSurface
-        isDarkTheme -> WarmDarkCardIncompleteStepText
-        else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+        done || isCurrent -> colors.textPrimary
+        else -> colors.textTertiary
     }
     val itemVerticalPadding = 8.dp
     val stepCircleSize = 24.dp
@@ -1396,13 +1530,13 @@ private fun SetupStepRow(index: Int, label: String, done: Boolean, isCurrent: Bo
                     Icon(
                         imageVector = Icons.Default.Check,
                         contentDescription = null,
-                        tint = Color.White,
+                        tint = colors.textOnInverse,
                         modifier = Modifier.size(16.dp)
                     )
                 } else {
                     Text(
                         text = index.toString(),
-                        color = if (isCurrent) Color.White else if (isDarkTheme) WarmDarkCardIncompleteStepText else futureGrey,
+                        color = if (isCurrent) colors.textOnInverse else futureGrey,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Black
                     )
@@ -1416,7 +1550,7 @@ private fun SetupStepRow(index: Int, label: String, done: Boolean, isCurrent: Bo
                 .padding(top = 2.dp),
             color = stepLabelColor,
             fontSize = 13.sp,
-            fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal
+            fontWeight = if (isCurrent) FontWeight.Medium else FontWeight.Normal
         )
     }
 }
@@ -1450,8 +1584,7 @@ private fun MetricGrid(
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             text = "即時指標",
-            fontSize = 16.sp,
-            fontWeight = FontWeight.ExtraBold,
+            style = EyeDesignTokens.typography.sectionTitle,
             color = MaterialTheme.colorScheme.onBackground
         )
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1524,6 +1657,7 @@ private fun MetricTile(
     accent: Color,
     trend: List<Float>
 ) {
+    val text = EyeDesignTokens.typography
     GlassCard(modifier = modifier) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
@@ -1531,7 +1665,7 @@ private fun MetricTile(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(text = title, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = cardTitleTextColor())
+                Text(text = title, style = text.bodyStrong, color = cardTitleTextColor())
                 StatusDot(active = warning, accent = accent)
             }
             Spacer(modifier = Modifier.height(8.dp))
@@ -1540,21 +1674,20 @@ private fun MetricTile(
                 fontSize = 30,
                 color = if (warning) MaterialTheme.colorScheme.error else cardTitleTextColor()
             )
-            Text(text = unit, fontSize = 12.sp, color = cardBodyTextColor())
+            Text(text = unit, style = text.bodySmall, color = cardBodyTextColor())
             Spacer(modifier = Modifier.height(8.dp))
             ProgressTrack(progress = progress, warning = warning, accent = accent)
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = status,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
+                style = text.bodySmall,
                 color = if (warning) MaterialTheme.colorScheme.error else cardBodyTextColor()
             )
             Spacer(modifier = Modifier.height(10.dp))
             Sparkline(values = trend, color = if (warning) MaterialTheme.colorScheme.error else accent, modifier = Modifier.fillMaxWidth().height(44.dp))
             if (hint != null) {
                 Spacer(modifier = Modifier.height(8.dp))
-                Text(text = hint, fontSize = 12.sp, color = cardBodyTextColor())
+                Text(text = hint, style = text.bodySmall, color = cardBodyTextColor())
             } else if (showHintSkeleton) {
                 Spacer(modifier = Modifier.height(8.dp))
                 SkeletonPlaceholder()
@@ -1572,6 +1705,9 @@ private fun HistoryChartCard(
     postureTrend: List<Float>,
     lyingTrend: List<Float>
 ) {
+    val text = EyeDesignTokens.typography
+    val sectionBackground = groupedSectionBackground()
+    val sectionBorder = groupedSectionBorder()
     val (values, accent) = when (selected) {
         HistoryMetric.DISTANCE -> distanceTrend to Color(0xFF47F1B5)
         HistoryMetric.EYE_OPEN -> eyeTrend to Color(0xFF6EE7FF)
@@ -1586,8 +1722,8 @@ private fun HistoryChartCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(text = "歷史圖表", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = cardTitleTextColor())
-                Text(text = "最近 ${min(values.size, HISTORY_MAX_POINTS)} 點", fontSize = 12.sp, color = cardBodyTextColor())
+                Text(text = "歷史圖表", style = text.sectionTitle, color = cardTitleTextColor())
+                Text(text = "最近 ${min(values.size, HISTORY_MAX_POINTS)} 點", style = text.bodySmall, color = cardBodyTextColor())
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -1608,10 +1744,10 @@ private fun HistoryChartCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(140.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(16.dp))
-                    .padding(10.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(sectionBackground)
+                    .border(0.5.dp, sectionBorder, RoundedCornerShape(20.dp))
+                    .padding(20.dp)
             )
         }
     }
@@ -1665,25 +1801,27 @@ private fun Sparkline(values: List<Float>, color: Color, modifier: Modifier = Mo
 
 @Composable
 private fun GlassCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    val isDarkTheme = isSystemInDarkTheme()
+    val cardShape = RoundedCornerShape(24.dp)
+    val colors = EyeDesignTokens.colors
     Card(
         modifier = modifier
             .shadow(
-                elevation = 8.dp,
-                shape = RoundedCornerShape(20.dp),
-                ambientColor = Color(0xFF000000).copy(alpha = 0.06f),
-                spotColor = Color(0xFF000000).copy(alpha = 0.04f)
+                elevation = 4.dp,
+                shape = cardShape,
+                ambientColor = Color.Black.copy(alpha = 0.04f),
+                spotColor = Color.Black.copy(alpha = 0.03f)
             )
             .fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = cardShape,
+        border = BorderStroke(0.5.dp, colors.borderSubtle),
         colors = CardDefaults.cardColors(
-            containerColor = if (isDarkTheme) WarmDarkCardBackground else Color(0xFFFFFFFF)
+            containerColor = colors.cardContainer
         ),
         elevation = CardDefaults.cardElevation(
             defaultElevation = 0.dp
         )
     ) {
-        Column(modifier = Modifier.padding(16.dp), content = content)
+        Column(modifier = Modifier.padding(20.dp), content = content)
     }
 }
 
@@ -1699,19 +1837,20 @@ private fun StatusDot(active: Boolean, accent: Color) {
 
 @Composable
 private fun ProgressTrack(progress: Int?, warning: Boolean, accent: Color) {
+    val colors = EyeDesignTokens.colors
     val clamped = ((progress ?: 0).coerceIn(0, 140) / 140f).coerceIn(0f, 1f)
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(8.dp)
-            .clip(RoundedCornerShape(999.dp))
-            .background(Color.Black.copy(alpha = 0.08f))
+            .clip(EyeDesignTokens.chipShape)
+            .background(colors.surfaceSubtle)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth(clamped)
                 .height(8.dp)
-                .clip(RoundedCornerShape(999.dp))
+                .clip(EyeDesignTokens.chipShape)
                 .background(if (warning) MaterialTheme.colorScheme.error else accent)
         )
     }
@@ -1719,27 +1858,29 @@ private fun ProgressTrack(progress: Int?, warning: Boolean, accent: Color) {
 
 @Composable
 private fun CameraPermissionButton(onClick: () -> Unit) {
-    val isDarkTheme = isSystemInDarkTheme()
+    val colors = EyeDesignTokens.colors
+    val radius = EyeDesignTokens.radius
+    val spacing = EyeDesignTokens.spacing
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
+            .padding(start = spacing.md, end = spacing.md, bottom = spacing.md)
     ) {
         Button(
             onClick = onClick,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(radius.md),
             colors = ButtonDefaults.buttonColors(
-                containerColor = if (isDarkTheme) Color(0xFFEEE8E0) else Color(0xFF1A1A1A),
-                contentColor = if (isDarkTheme) Color(0xFF1A1A1A) else Color.White
+                containerColor = colors.accentPrimary,
+                contentColor = colors.textOnInverse
             )
         ) {
             Text(
                 "授權相機",
                 fontWeight = FontWeight.SemiBold,
-                color = if (isDarkTheme) Color(0xFF1A1A1A) else Color.White
+                color = colors.textOnInverse
             )
         }
     }
@@ -1747,38 +1888,40 @@ private fun CameraPermissionButton(onClick: () -> Unit) {
 
 @Composable
 private fun PrimaryPillButton(text: String, onClick: () -> Unit) {
+    val colors = EyeDesignTokens.colors
     Button(
         onClick = onClick,
-        shape = RoundedCornerShape(999.dp),
+        shape = EyeDesignTokens.chipShape,
         colors = ButtonDefaults.buttonColors(
-            containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary
+            containerColor = colors.accentPrimary,
+            contentColor = colors.textOnInverse
         ),
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
     ) {
         Text(
             text = text,
             fontWeight = FontWeight.Black,
-            color = MaterialTheme.colorScheme.onPrimary
+            color = colors.textOnInverse
         )
     }
 }
 
 @Composable
 private fun SecondaryPillButton(text: String, onClick: () -> Unit) {
+    val colors = EyeDesignTokens.colors
     OutlinedButton(
         onClick = onClick,
-        border = BorderStroke(1.dp, Color(0xFF1A1A1A).copy(alpha = 0.3f)),
-        shape = RoundedCornerShape(50.dp),
+        border = BorderStroke(1.dp, colors.borderStrong),
+        shape = EyeDesignTokens.chipShape,
         colors = ButtonDefaults.outlinedButtonColors(
-            contentColor = Color(0xFF1A1A1A)
+            contentColor = colors.textPrimary
         ),
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
     ) {
         Text(
             text = text,
             fontWeight = FontWeight.Medium,
-            color = Color(0xFF1A1A1A)
+            color = colors.textPrimary
         )
     }
 }
