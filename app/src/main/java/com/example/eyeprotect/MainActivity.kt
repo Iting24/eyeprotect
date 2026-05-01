@@ -7,7 +7,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.setupWithNavController
-import com.example.eyeprotect.monitoring.TrueToneOverlayService
+import com.example.eyeprotect.monitoring.NightShiftOverlayService
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -21,22 +21,22 @@ class MainActivity : AppCompatActivity() {
             supportFragmentManager.findFragmentById(R.id.nav_host_fragment) as NavHostFragment
         findViewById<BottomNavigationView>(R.id.bottom_nav).setupWithNavController(navHost.navController)
 
-        syncTrueToneOverlay()
+        syncNightShiftOverlay()
     }
 
     override fun onResume() {
         super.onResume()
-        syncTrueToneOverlay()
+        syncNightShiftOverlay()
     }
 
-    private fun syncTrueToneOverlay() {
+    private fun syncNightShiftOverlay() {
         val prefs = getSharedPreferences(PreferenceKeys.PREFS_NAME, MODE_PRIVATE)
-        val trueToneEnabled = prefs.getBoolean(PreferenceKeys.PREF_TRUE_TONE_ENABLED, false)
+        val nightShiftEnabled = prefs.getBoolean(PreferenceKeys.PREF_NIGHT_SHIFT_ENABLED, false)
         val hasOverlayPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)
 
         when {
-            trueToneEnabled && hasOverlayPermission -> TrueToneOverlayService.start(this)
-            else -> TrueToneOverlayService.stop(this)
+            nightShiftEnabled && hasOverlayPermission -> NightShiftOverlayService.start(this)
+            else -> NightShiftOverlayService.stop(this)
         }
     }
 }

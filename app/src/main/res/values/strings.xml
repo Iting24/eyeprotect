@@ -40,6 +40,13 @@
 
     <string name="eye_settings_overlay_permission_hint">需要「在其他應用程式上層顯示」權限。</string>
     <string name="eye_settings_open_overlay_permission">前往開啟懸浮窗權限</string>
-    <string name="eye_settings_true_tone_title">True Tone 模擬</string>
-    <string name="eye_settings_true_tone_desc">以全域暖色濾鏡模擬較柔和的螢幕白點，作為 True Tone 體驗的第一版。</string>
+    <string name="eye_settings_night_shift_title">Night Shift 模擬</string>
+    <string name="eye_settings_night_shift_desc">以全域暖色濾鏡模擬夜覽效果，並可依環境光自動調整濾鏡強度。</string>
+    <string name="eye_settings_night_shift_mode_title">Night Shift 模式</string>
+    <string name="eye_settings_night_shift_mode_auto">自動</string>
+    <string name="eye_settings_night_shift_mode_manual">手動</string>
+    <string name="eye_settings_night_shift_recommendation">目前環境推薦：%1$dK（約 %2$d lux）</string>
+    <string name="eye_settings_night_shift_apply_recommendation">套用推薦</string>
+    <string name="eye_settings_night_shift_slider_auto">暖度偏好：%1$dK</string>
+    <string name="eye_settings_night_shift_slider_manual">手動暖度：%1$dK</string>
 </resources>

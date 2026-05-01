@@ -2,6 +2,10 @@ package com.example.eyeprotect.nav
 
 import android.content.Context
 import android.content.Intent
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -18,11 +22,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.AssistChip
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -40,7 +47,9 @@ import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 import com.example.eyeprotect.PreferenceKeys
 import com.example.eyeprotect.R
-import com.example.eyeprotect.monitoring.TrueToneOverlayService
+import com.example.eyeprotect.monitoring.NightShiftMode
+import com.example.eyeprotect.monitoring.NightShiftOverlayService
+import com.example.eyeprotect.monitoring.NightShiftProfiles
 import com.example.eyeprotect.ui.theme.EyeprotectTheme
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -82,15 +91,46 @@ private fun SettingsScreen(
     var autoNightEnabled by remember {
         mutableStateOf(prefs.getBoolean(PreferenceKeys.PREF_AUTO_NIGHT_MODE_ENABLED, false))
     }
-    var trueToneEnabled by remember {
-        mutableStateOf(prefs.getBoolean(PreferenceKeys.PREF_TRUE_TONE_ENABLED, false))
+    var nightShiftEnabled by remember {
+        mutableStateOf(prefs.getBoolean(PreferenceKeys.PREF_NIGHT_SHIFT_ENABLED, false))
+    }
+    var nightShiftMode by remember {
+        mutableStateOf(
+            NightShiftMode.fromPref(
+                prefs.getString(PreferenceKeys.PREF_NIGHT_SHIFT_MODE, NightShiftMode.AUTO.prefValue)
+            )
+        )
+    }
+    var nightShiftWarmth by remember {
+        mutableStateOf(prefs.getFloat(PreferenceKeys.PREF_NIGHT_SHIFT_WARMTH, 0.5f).coerceIn(0f, 1f))
+    }
+    var ambientLux by remember { mutableStateOf(80f) }
+
+    DisposableEffect(context) {
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        val sensor = sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT)
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent?) {
+                ambientLux = event?.values?.firstOrNull() ?: ambientLux
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+        }
+
+        if (sensor != null) {
+            sensorManager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_NORMAL)
+        }
+
+        onDispose {
+            sensorManager.unregisterListener(listener)
+        }
     }
 
-    LaunchedEffect(trueToneEnabled) {
-        if (trueToneEnabled && hasOverlayPermission(context)) {
-            TrueToneOverlayService.start(context)
-        } else if (!trueToneEnabled) {
-            TrueToneOverlayService.stop(context)
+    LaunchedEffect(nightShiftEnabled) {
+        if (nightShiftEnabled && hasOverlayPermission(context)) {
+            NightShiftOverlayService.start(context)
+        } else if (!nightShiftEnabled) {
+            NightShiftOverlayService.stop(context)
         }
     }
 
@@ -170,17 +210,17 @@ private fun SettingsScreen(
                 )
 
                 FeatureToggleRow(
-                    title = stringResource(id = R.string.eye_settings_true_tone_title),
-                    description = stringResource(id = R.string.eye_settings_true_tone_desc),
-                    checked = trueToneEnabled,
+                    title = stringResource(id = R.string.eye_settings_night_shift_title),
+                    description = stringResource(id = R.string.eye_settings_night_shift_desc),
+                    checked = nightShiftEnabled,
                     beta = true,
                     onCheckedChange = { enabled ->
-                        trueToneEnabled = enabled
-                        prefs.edit().putBoolean(PreferenceKeys.PREF_TRUE_TONE_ENABLED, enabled).apply()
+                        nightShiftEnabled = enabled
+                        prefs.edit().putBoolean(PreferenceKeys.PREF_NIGHT_SHIFT_ENABLED, enabled).apply()
                     }
                 )
 
-                if (trueToneEnabled && !hasOverlayPermission(context)) {
+                if (nightShiftEnabled && !hasOverlayPermission(context)) {
                     Text(
                         text = stringResource(id = R.string.eye_settings_overlay_permission_hint),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -189,6 +229,90 @@ private fun SettingsScreen(
                     Button(onClick = { requestOverlayPermission(context) }) {
                         Text(stringResource(id = R.string.eye_settings_open_overlay_permission))
                     }
+                }
+
+                if (nightShiftEnabled) {
+                    val recommendedWarmth = NightShiftProfiles.recommendedWarmthForLux(ambientLux)
+                    val recommendedKelvin = NightShiftProfiles.kelvinForWarmth(recommendedWarmth)
+                    val currentKelvin = NightShiftProfiles.kelvinForWarmth(nightShiftWarmth)
+                    val sliderLabel =
+                        if (nightShiftMode == NightShiftMode.AUTO) {
+                            stringResource(id = R.string.eye_settings_night_shift_slider_auto, currentKelvin)
+                        } else {
+                            stringResource(id = R.string.eye_settings_night_shift_slider_manual, currentKelvin)
+                        }
+
+                    Text(
+                        text = stringResource(id = R.string.eye_settings_night_shift_mode_title),
+                        style = MaterialTheme.typography.titleSmall
+                    )
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        FilterChip(
+                            selected = nightShiftMode == NightShiftMode.AUTO,
+                            onClick = {
+                                nightShiftMode = NightShiftMode.AUTO
+                                prefs.edit()
+                                    .putString(PreferenceKeys.PREF_NIGHT_SHIFT_MODE, NightShiftMode.AUTO.prefValue)
+                                    .apply()
+                                if (nightShiftEnabled && hasOverlayPermission(context)) {
+                                    NightShiftOverlayService.start(context)
+                                }
+                            },
+                            label = { Text(stringResource(id = R.string.eye_settings_night_shift_mode_auto)) }
+                        )
+                        FilterChip(
+                            selected = nightShiftMode == NightShiftMode.MANUAL,
+                            onClick = {
+                                nightShiftMode = NightShiftMode.MANUAL
+                                prefs.edit()
+                                    .putString(PreferenceKeys.PREF_NIGHT_SHIFT_MODE, NightShiftMode.MANUAL.prefValue)
+                                    .apply()
+                                if (nightShiftEnabled && hasOverlayPermission(context)) {
+                                    NightShiftOverlayService.start(context)
+                                }
+                            },
+                            label = { Text(stringResource(id = R.string.eye_settings_night_shift_mode_manual)) }
+                        )
+                    }
+
+                    Text(
+                        text = stringResource(
+                            id = R.string.eye_settings_night_shift_recommendation,
+                            recommendedKelvin,
+                            ambientLux.toInt()
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+
+                    Button(
+                        onClick = {
+                            nightShiftWarmth = recommendedWarmth
+                            prefs.edit().putFloat(PreferenceKeys.PREF_NIGHT_SHIFT_WARMTH, recommendedWarmth).apply()
+                            if (nightShiftEnabled && hasOverlayPermission(context)) {
+                                NightShiftOverlayService.start(context)
+                            }
+                        }
+                    ) {
+                        Text(stringResource(id = R.string.eye_settings_night_shift_apply_recommendation))
+                    }
+
+                    Text(
+                        text = sliderLabel,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Slider(
+                        value = nightShiftWarmth,
+                        onValueChange = { nightShiftWarmth = it },
+                        onValueChangeFinished = {
+                            prefs.edit().putFloat(PreferenceKeys.PREF_NIGHT_SHIFT_WARMTH, nightShiftWarmth).apply()
+                            if (nightShiftEnabled && hasOverlayPermission(context)) {
+                                NightShiftOverlayService.start(context)
+                            }
+                        },
+                        valueRange = 0f..1f
+                    )
                 }
 
                 FeatureToggleRow(
