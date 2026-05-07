@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.BorderStroke
@@ -95,6 +96,8 @@ class MainActivity : AppCompatActivity() {
     }
 }
 
+private val BottomNavMaxWidth = 348.dp
+
 private data class BottomNavItem(
     val destinationId: Int,
     val iconRes: Int,
@@ -119,6 +122,7 @@ private fun EyeProtectBottomNavigationBar(
                 .align(Alignment.BottomCenter)
                 .zIndex(10f)
                 .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
+                .widthIn(max = BottomNavMaxWidth)
                 .fillMaxWidth()
                 .height(62.dp)
                 .shadow(
