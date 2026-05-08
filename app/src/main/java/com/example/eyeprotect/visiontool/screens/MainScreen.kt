@@ -103,6 +103,7 @@ fun MainScreen(viewModel: MainViewModel) {
         CameraPreview(
             modifier = Modifier.fillMaxSize(),
             analyzer = analyzer,
+            roiSizePx = roiSizePx,
             onPreviewViewReady = { previewView = it },
             onMaskTransform = { matrix, w, h -> viewModel.setMaskTransform(matrix, w, h) }
         )
@@ -168,15 +169,15 @@ fun MainScreen(viewModel: MainViewModel) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                items(listOf(AssistMode.RED, AssistMode.ORANGE, AssistMode.YELLOW, AssistMode.GREEN, AssistMode.BLUE, AssistMode.INDIGO, AssistMode.PURPLE, AssistMode.GRAY, AssistMode.BROWN, AssistMode.NONE)) { mode ->
+                items(listOf(AssistMode.RED, AssistMode.ORANGE, AssistMode.YELLOW, AssistMode.GREEN, AssistMode.BLUE, AssistMode.PURPLE, AssistMode.GRAY, AssistMode.BROWN)) { mode ->
                     val isSelected = selectedModes.contains(mode)
                     FilterChip(
                         selected = isSelected,
                         onClick = { viewModel.toggleMode(mode) },
                         label = { Text(mode.title) },
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = if (mode == AssistMode.NONE) MaterialTheme.colorScheme.secondaryContainer else activeColor.copy(alpha = 0.2f),
-                            selectedLabelColor = if (mode == AssistMode.NONE) MaterialTheme.colorScheme.onSecondaryContainer else activeColor
+                            selectedContainerColor = activeColor.copy(alpha = 0.2f),
+                            selectedLabelColor = activeColor
                         ),
                         border = FilterChipDefaults.filterChipBorder(
                             borderColor = if (isSelected) activeColor else MaterialTheme.colorScheme.outline,
