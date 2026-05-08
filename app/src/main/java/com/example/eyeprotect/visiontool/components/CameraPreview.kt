@@ -93,9 +93,13 @@ fun CameraPreview(
                         .setTargetRotation(Surface.ROTATION_0)
 
                     if (viewW > 0 && viewH > 0) {
-                        val target = android.util.Size(viewW, viewH)
-                        previewBuilder.setTargetResolution(target)
-                        analysisBuilder.setTargetResolution(target)
+                        val previewTarget = android.util.Size(viewW, viewH)
+                        val analysisTarget = android.util.Size(
+                            ((viewW / 2).coerceAtLeast(360) / 2) * 2,
+                            ((viewH / 2).coerceAtLeast(360) / 2) * 2
+                        )
+                        previewBuilder.setTargetResolution(previewTarget)
+                        analysisBuilder.setTargetResolution(analysisTarget)
                     } else {
                         previewBuilder.setTargetAspectRatio(AspectRatio.RATIO_16_9)
                         analysisBuilder.setTargetAspectRatio(AspectRatio.RATIO_16_9)
