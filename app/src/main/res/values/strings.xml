@@ -49,4 +49,9 @@
     <string name="eye_settings_night_shift_apply_recommendation">套用推薦</string>
     <string name="eye_settings_night_shift_slider_auto">暖度偏好：%1$dK</string>
     <string name="eye_settings_night_shift_slider_manual">手動暖度：%1$dK</string>
+    <string name="eye_settings_night_shift_auto_applied">目前自動套用：%1$dK</string>
+    <string name="eye_settings_night_shift_auto_learned_offset">已學習偏好：%1$s</string>
+    <string name="eye_settings_night_shift_auto_hint">若你覺得這種光線下太黃或不夠暖，切到手動調整後，系統會記住這種環境的修正。</string>
+    <string name="eye_settings_night_shift_manual_learning_hint">手動調整後，系統會把這次設定記成目前亮度環境的自動偏好。</string>
+    <string name="eye_settings_night_shift_reset_preference">重置學習偏好</string>
 </resources>

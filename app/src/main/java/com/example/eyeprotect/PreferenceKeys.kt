@@ -9,6 +9,6 @@ object PreferenceKeys {
     const val PREF_AUTO_NIGHT_MODE_ENABLED = "pref_auto_night_mode_enabled"
     const val PREF_NIGHT_SHIFT_ENABLED = "pref_night_shift_enabled"
     const val PREF_NIGHT_SHIFT_MODE = "pref_night_shift_mode"
-    const val PREF_NIGHT_SHIFT_WARMTH = "pref_night_shift_warmth"
+    const val PREF_NIGHT_SHIFT_MANUAL_WARMTH = "pref_night_shift_manual_warmth"
 }
 

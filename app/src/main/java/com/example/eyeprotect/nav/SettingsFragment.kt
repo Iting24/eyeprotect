@@ -17,8 +17,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -101,8 +104,13 @@ private fun SettingsScreen(
             )
         )
     }
-    var nightShiftWarmth by remember {
-        mutableStateOf(prefs.getFloat(PreferenceKeys.PREF_NIGHT_SHIFT_WARMTH, 0.5f).coerceIn(0f, 1f))
+    var nightShiftManualWarmth by remember {
+        mutableStateOf(
+            prefs.getFloat(
+                PreferenceKeys.PREF_NIGHT_SHIFT_MANUAL_WARMTH,
+                NightShiftProfiles.DEFAULT_MANUAL_WARMTH
+            ).coerceIn(0f, 1f)
+        )
     }
     var ambientLux by remember { mutableStateOf(80f) }
 
@@ -137,6 +145,7 @@ private fun SettingsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -145,6 +154,7 @@ private fun SettingsScreen(
         Text(stringResource(id = R.string.settings_subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant)
 
         Card(
+            modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(22.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
@@ -165,6 +175,7 @@ private fun SettingsScreen(
         }
 
         Card(
+            modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(22.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
@@ -234,13 +245,10 @@ private fun SettingsScreen(
                 if (nightShiftEnabled) {
                     val recommendedWarmth = NightShiftProfiles.recommendedWarmthForLux(ambientLux)
                     val recommendedKelvin = NightShiftProfiles.kelvinForWarmth(recommendedWarmth)
-                    val currentKelvin = NightShiftProfiles.kelvinForWarmth(nightShiftWarmth)
-                    val sliderLabel =
-                        if (nightShiftMode == NightShiftMode.AUTO) {
-                            stringResource(id = R.string.eye_settings_night_shift_slider_auto, currentKelvin)
-                        } else {
-                            stringResource(id = R.string.eye_settings_night_shift_slider_manual, currentKelvin)
-                        }
+                    val learnedOffset = NightShiftProfiles.learnedOffsetForLux(ambientLux, prefs)
+                    val learnedAutoWarmth = NightShiftProfiles.effectiveAutoWarmth(ambientLux, prefs)
+                    val learnedAutoKelvin = NightShiftProfiles.kelvinForWarmth(learnedAutoWarmth)
+                    val manualKelvin = NightShiftProfiles.kelvinForWarmth(nightShiftManualWarmth)
 
                     Text(
                         text = stringResource(id = R.string.eye_settings_night_shift_mode_title),
@@ -286,33 +294,88 @@ private fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall
                     )
 
-                    Button(
-                        onClick = {
-                            nightShiftWarmth = recommendedWarmth
-                            prefs.edit().putFloat(PreferenceKeys.PREF_NIGHT_SHIFT_WARMTH, recommendedWarmth).apply()
-                            if (nightShiftEnabled && hasOverlayPermission(context)) {
-                                NightShiftOverlayService.start(context)
+                    if (nightShiftMode == NightShiftMode.AUTO) {
+                        Text(
+                            text = stringResource(
+                                id = R.string.eye_settings_night_shift_auto_applied,
+                                learnedAutoKelvin
+                            ),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            text = stringResource(
+                                id = R.string.eye_settings_night_shift_auto_learned_offset,
+                                offsetDescription(learnedOffset)
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Button(
+                            onClick = {
+                                NightShiftProfiles.resetLearnedOffsets(prefs)
+                                if (nightShiftEnabled && hasOverlayPermission(context)) {
+                                    NightShiftOverlayService.start(context)
+                                }
                             }
+                        ) {
+                            Text(stringResource(id = R.string.eye_settings_night_shift_reset_preference))
                         }
-                    ) {
-                        Text(stringResource(id = R.string.eye_settings_night_shift_apply_recommendation))
-                    }
-
-                    Text(
-                        text = sliderLabel,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Slider(
-                        value = nightShiftWarmth,
-                        onValueChange = { nightShiftWarmth = it },
-                        onValueChangeFinished = {
-                            prefs.edit().putFloat(PreferenceKeys.PREF_NIGHT_SHIFT_WARMTH, nightShiftWarmth).apply()
-                            if (nightShiftEnabled && hasOverlayPermission(context)) {
-                                NightShiftOverlayService.start(context)
+                        Text(
+                            text = stringResource(id = R.string.eye_settings_night_shift_auto_hint),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    } else {
+                        Button(
+                            onClick = {
+                                nightShiftManualWarmth = recommendedWarmth
+                                prefs.edit()
+                                    .putFloat(PreferenceKeys.PREF_NIGHT_SHIFT_MANUAL_WARMTH, recommendedWarmth)
+                                    .apply()
+                                NightShiftProfiles.saveLearnedOffsetForLux(
+                                    prefs = prefs,
+                                    lux = ambientLux,
+                                    manualWarmth = recommendedWarmth
+                                )
+                                if (nightShiftEnabled && hasOverlayPermission(context)) {
+                                    NightShiftOverlayService.start(context)
+                                }
                             }
-                        },
-                        valueRange = 0f..1f
-                    )
+                        ) {
+                            Text(stringResource(id = R.string.eye_settings_night_shift_apply_recommendation))
+                        }
+
+                        Text(
+                            text = stringResource(
+                                id = R.string.eye_settings_night_shift_slider_manual,
+                                manualKelvin
+                            ),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            text = stringResource(id = R.string.eye_settings_night_shift_manual_learning_hint),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Slider(
+                            value = nightShiftManualWarmth,
+                            onValueChange = { nightShiftManualWarmth = it },
+                            onValueChangeFinished = {
+                                prefs.edit()
+                                    .putFloat(PreferenceKeys.PREF_NIGHT_SHIFT_MANUAL_WARMTH, nightShiftManualWarmth)
+                                    .apply()
+                                NightShiftProfiles.saveLearnedOffsetForLux(
+                                    prefs = prefs,
+                                    lux = ambientLux,
+                                    manualWarmth = nightShiftManualWarmth
+                                )
+                                if (nightShiftEnabled && hasOverlayPermission(context)) {
+                                    NightShiftOverlayService.start(context)
+                                }
+                            },
+                            valueRange = 0f..1f
+                        )
+                    }
                 }
 
                 FeatureToggleRow(
@@ -370,6 +433,14 @@ private fun requestOverlayPermission(context: Context) {
 
 private fun hasOverlayPermission(context: Context): Boolean {
     return Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(context)
+}
+
+private fun offsetDescription(offset: Float): String {
+    return when {
+        offset > 0.08f -> "偏暖"
+        offset < -0.08f -> "偏冷"
+        else -> "接近預設"
+    }
 }
 
 // Preference keys are shared with the background monitoring service.
