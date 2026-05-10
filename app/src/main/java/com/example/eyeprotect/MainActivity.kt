@@ -1,7 +1,6 @@
 package com.example.eyeprotect
 
 import android.os.Bundle
-import android.view.MenuItem
 import android.view.View
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -41,7 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.navigation.fragment.NavHostFragment
-import androidx.navigation.ui.NavigationUI.onNavDestinationSelected
+import androidx.navigation.NavOptions
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.example.eyeprotect.ui.theme.EyeDesignTokens
 import com.example.eyeprotect.ui.theme.EyeprotectTheme
@@ -58,7 +57,7 @@ class MainActivity : AppCompatActivity() {
             supportFragmentManager.findFragmentById(R.id.nav_host_fragment) as NavHostFragment
         val navController = navHost.navController
         val bottomNav = findViewById<BottomNavigationView>(R.id.bottom_nav)
-        val navItems = bottomNav.menu.toBottomNavItems()
+        val navItems = bottomNavItems()
         bottomNav.visibility = View.INVISIBLE
 
         var selectedDestinationId by mutableIntStateOf(
@@ -77,7 +76,15 @@ class MainActivity : AppCompatActivity() {
                         selectedDestinationId = selectedDestinationId,
                         onNavigate = { item ->
                             if (selectedDestinationId != item.destinationId) {
-                                onNavDestinationSelected(item.menuItem, navController)
+                                navController.navigate(
+                                    item.destinationId,
+                                    null,
+                                    NavOptions.Builder()
+                                        .setLaunchSingleTop(true)
+                                        .setRestoreState(true)
+                                        .setPopUpTo(navController.graph.startDestinationId, false, true)
+                                        .build()
+                                )
                             }
                         }
                     )
@@ -102,8 +109,7 @@ private data class BottomNavItem(
     val destinationId: Int,
     val iconRes: Int,
     val selectedIconRes: Int = iconRes,
-    val labelRes: Int,
-    val menuItem: MenuItem
+    val labelRes: Int
 )
 
 @Composable
@@ -198,32 +204,38 @@ private fun EyeProtectNavigationItem(
     }
 }
 
-private fun android.view.Menu.toBottomNavItems(): List<BottomNavItem> {
+private fun bottomNavItems(): List<BottomNavItem> {
     return listOf(
         BottomNavItem(
             destinationId = R.id.dashboardFragment,
             iconRes = R.drawable.ic_nav_dashboard_eye_closed,
             selectedIconRes = R.drawable.ic_nav_dashboard_eye_open,
-            labelRes = R.string.nav_dashboard,
-            menuItem = findItem(R.id.dashboardFragment)
+            labelRes = R.string.nav_dashboard
         ),
         BottomNavItem(
             destinationId = R.id.visionToolFragment,
             iconRes = R.drawable.ic_nav_vision,
-            labelRes = R.string.nav_vision_tool,
-            menuItem = findItem(R.id.visionToolFragment)
+            labelRes = R.string.nav_vision_tool
         ),
         BottomNavItem(
             destinationId = R.id.eyeExerciseFragment,
             iconRes = R.drawable.ic_nav_exercise,
-            labelRes = R.string.nav_eye_exercise,
-            menuItem = findItem(R.id.eyeExerciseFragment)
+            labelRes = R.string.nav_eye_exercise
+        ),
+        BottomNavItem(
+            destinationId = R.id.acupressureFragment,
+            iconRes = R.drawable.ic_nav_acupressure,
+            labelRes = R.string.nav_acupressure
+        ),
+        BottomNavItem(
+            destinationId = R.id.leeBuLeeFragment,
+            iconRes = R.drawable.ic_nav_leebulee,
+            labelRes = R.string.nav_leebulee
         ),
         BottomNavItem(
             destinationId = R.id.settingsFragment,
             iconRes = R.drawable.ic_nav_settings,
-            labelRes = R.string.nav_settings,
-            menuItem = findItem(R.id.settingsFragment)
+            labelRes = R.string.nav_settings
         )
     )
 }

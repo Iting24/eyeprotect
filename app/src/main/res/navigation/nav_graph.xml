@@ -20,6 +20,16 @@
         android:label="@string/nav_eye_exercise" />
 
     <fragment
+        android:id="@+id/acupressureFragment"
+        android:name="com.example.eyeprotect.nav.AcupressureFragment"
+        android:label="@string/nav_acupressure" />
+
+    <fragment
+        android:id="@+id/leeBuLeeFragment"
+        android:name="com.example.eyeprotect.nav.LeeBuLeeFragment"
+        android:label="@string/nav_leebulee" />
+
+    <fragment
         android:id="@+id/calibrationFragment"
         android:name="com.example.eyeprotect.nav.CalibrationFragment"
         android:label="@string/start_calibration" />

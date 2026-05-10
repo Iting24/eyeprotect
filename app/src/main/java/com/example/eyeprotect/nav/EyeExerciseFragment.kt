@@ -1,12 +1,11 @@
 package com.example.eyeprotect.nav
 
-import android.os.Bundle
 import android.os.Build
+import android.os.Bundle
 import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,6 +16,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -28,7 +28,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.Fragment
-import androidx.navigation.fragment.findNavController
 import com.example.eyeprotect.R
 import com.example.eyeprotect.monitoring.EyeExerciseOverlayService
 import com.example.eyeprotect.ui.theme.EyeprotectTheme
@@ -80,7 +79,7 @@ private fun EyeExerciseScreen(
         Text(stringResource(id = R.string.title_eye_exercise), style = MaterialTheme.typography.headlineSmall)
         Text(stringResource(id = R.string.eye_exercise_subtitle), color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(
-            text = "目前先保留手動模式，節奏與自動觸發規則之後再收斂。",
+            text = "依照浮層提示活動眼球，訓練過程可調整倒數時間。",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall
         )

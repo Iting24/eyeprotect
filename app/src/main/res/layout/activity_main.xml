@@ -32,7 +32,6 @@
         android:paddingEnd="6dp"
         android:paddingBottom="8dp"
         android:clipToOutline="true"
-        app:menu="@menu/bottom_nav_menu"
         app:itemIconSize="22dp"
         app:itemIconTint="@color/bottom_nav_item_colors"
         app:itemTextColor="@color/bottom_nav_item_colors"

@@ -79,6 +79,7 @@ dependencies {
   implementation(libs.play.services.mlkit.face.detection)
   implementation(libs.mlkit.pose.detection)
   implementation(libs.androidx.camera.lifecycle)
+  implementation(libs.guava)
   testImplementation(libs.junit)
   androidTestImplementation(libs.androidx.junit)
   androidTestImplementation(libs.androidx.espresso.core)

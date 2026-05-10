@@ -8,11 +8,15 @@
     <string name="nav_dashboard">首頁</string>
     <string name="nav_vision_tool">視覺工具</string>
     <string name="nav_eye_exercise">眼球體操</string>
+    <string name="nav_acupressure">穴道按摩</string>
+    <string name="nav_leebulee">走路安全</string>
     <string name="nav_settings">護眼設定</string>
 
     <string name="title_dashboard">首頁</string>
     <string name="title_vision_tool">視覺工具</string>
     <string name="title_eye_exercise">眼球體操</string>
+    <string name="title_acupressure">穴道按摩</string>
+    <string name="title_leebulee">EyeLeeBuLee</string>
     <string name="title_settings">護眼設定</string>
 
     <string name="vision_tool_subtitle">Beta 功能：色彩／色弱輔助辨識（相機）</string>
@@ -22,6 +26,13 @@
     <string name="eye_exercise_subtitle">Beta 功能：手動啟動體操（需要懸浮窗權限）</string>
     <string name="eye_exercise_start">啟動體操</string>
     <string name="eye_exercise_timer">定時：%1$ds</string>
+    <string name="acupressure_subtitle">選擇穴道並進入 AR 按摩示範。</string>
+    <string name="acupressure_start">選擇穴道按摩</string>
+
+    <string name="leebulee_subtitle">低頭族走路安全護衛</string>
+    <string name="leebulee_monitoring_on">監控泡泡已啟動</string>
+    <string name="leebulee_monitoring_off">啟動監控泡泡</string>
+    <string name="leebulee_description">開啟後，偵測到走路且低頭時會顯示透明相機浮層，提醒注意前方路況。點擊星星泡泡可手動開關浮層。</string>
 
     <string name="settings_subtitle">個人姿勢基準校正、參數調整</string>
     <string name="start_calibration">開始校正</string>
