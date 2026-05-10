@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F7F4F8"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:id="@+id/titleSelected"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="已選症狀"
+            android:textColor="#0B4A8B"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:id="@+id/selectedSymptomsContainer"
+            android:layout_width="match_parent"
+            android:layout_height="150dp"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_acupressure_selected_area"
+            android:gravity="top"
+            android:orientation="vertical"
+            android:padding="12dp" />
+
+        <TextView
+            android:id="@+id/titleChooseSymptom"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="請選擇症狀"
+            android:textColor="#0B4A8B"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/btnFatigue"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_acupressure_chip_gray"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="疲勞"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/btnEyeFatigue"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_acupressure_chip_gray"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="眼睛疲勞"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/btnEyeCare"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_acupressure_chip_gray"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="眼睛澀澀"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/btnHeadache"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_acupressure_chip_gray"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="頭痛"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/btnTears"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_acupressure_chip_gray"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="流淚"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/btnBrowPain"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_acupressure_chip_gray"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="眉骨疼痛"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/btnBlur"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_marginEnd="8dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_acupressure_chip_gray"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="視力模糊"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp" />
+
+            <Space
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/nextButton"
+            android:layout_width="match_parent"
+            android:layout_height="54dp"
+            android:layout_marginTop="36dp"
+            android:background="@drawable/bg_acupressure_next_button"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:text="下一步   ➜"
+            android:textColor="#FFFFFF"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+
+    </LinearLayout>
+</ScrollView>

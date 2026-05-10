@@ -1,0 +1,302 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#101010">
+
+    <LinearLayout
+        android:id="@+id/mainGuideContent"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <!-- 上方示意圖：放大，寬度吃滿 -->
+        <ImageView
+            android:id="@+id/guideImageView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:adjustViewBounds="true"
+            android:background="#FFFFFF"
+            android:contentDescription="穴位示範圖片"
+            android:padding="0dp"
+            android:scaleType="fitCenter" />
+
+        <!-- 示意圖與鏡頭之間：穴道進度條 -->
+        <LinearLayout
+            android:id="@+id/progressContainer"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="#F2F5F9"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp">
+
+            <TextView
+                android:id="@+id/tvProgressLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="穴道進度"
+                android:textColor="#0A4C92"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <ProgressBar
+                android:id="@+id/progressAcupoint"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="0dp"
+                android:layout_height="10dp"
+                android:layout_marginStart="12dp"
+                android:layout_marginEnd="12dp"
+                android:layout_weight="1"
+                android:max="6"
+                android:progress="1"
+                android:progressBackgroundTint="#D6E4F5"
+                android:progressTint="#0A4C92" />
+
+            <TextView
+                android:id="@+id/tvProgressCount"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="1/6"
+                android:textColor="#0A4C92"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+        </LinearLayout>
+
+        <!-- 下方：相機 AR 區 -->
+        <FrameLayout
+            android:id="@+id/cameraArea"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <androidx.camera.view.PreviewView
+                android:id="@+id/previewView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                app:implementationMode="compatible"
+                app:scaleType="fillCenter" />
+
+            <com.example.eyeprotect.acupressure.AcupointOverlayView
+                android:id="@+id/acupointOverlayView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <ImageView
+                android:id="@+id/leftHandGuide"
+                android:layout_width="88dp"
+                android:layout_height="88dp"
+                android:alpha="0.62"
+                android:contentDescription="左手按壓示意"
+                android:scaleType="fitCenter"
+                android:visibility="invisible" />
+
+            <ImageView
+                android:id="@+id/rightHandGuide"
+                android:layout_width="88dp"
+                android:layout_height="88dp"
+                android:alpha="0.62"
+                android:contentDescription="右手按壓示意"
+                android:scaleType="fitCenter"
+                android:visibility="invisible" />
+
+            <!-- 左上：目前穴道 -->
+            <TextView
+                android:id="@+id/tvAcupointName"
+                android:layout_width="wrap_content"
+                android:layout_height="42dp"
+                android:layout_marginStart="14dp"
+                android:layout_marginTop="14dp"
+                android:background="@drawable/bg_acupressure_chip_blue"
+                android:gravity="center"
+                android:paddingStart="18dp"
+                android:paddingEnd="18dp"
+                android:text="攢竹穴"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <!-- 右上：暫停 -->
+            <TextView
+                android:id="@+id/btnPauseResume"
+                android:layout_width="74dp"
+                android:layout_height="42dp"
+                android:layout_gravity="top|end"
+                android:layout_marginTop="14dp"
+                android:layout_marginEnd="14dp"
+                android:background="@drawable/bg_acupressure_chip_blue"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="暫停"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <!-- 右上第二顆：跳過 -->
+            <TextView
+                android:id="@+id/btnSkip"
+                android:layout_width="74dp"
+                android:layout_height="42dp"
+                android:layout_gravity="top|end"
+                android:layout_marginTop="64dp"
+                android:layout_marginEnd="14dp"
+                android:background="@drawable/bg_acupressure_chip_blue"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="跳過"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvGuideText"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:layout_gravity="top"
+                android:layout_marginStart="20dp"
+                android:layout_marginTop="116dp"
+                android:layout_marginEnd="20dp"
+                android:background="@drawable/bg_acupressure_guide_text_box"
+                android:gravity="center_vertical"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
+                android:text="請將臉部置中，準備開始偵測穴位"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/tvCountdown"
+                android:layout_width="58dp"
+                android:layout_height="58dp"
+                android:layout_gravity="top|end"
+                android:layout_marginTop="172dp"
+                android:layout_marginEnd="22dp"
+                android:background="@drawable/bg_acupressure_countdown_circle"
+                android:gravity="center"
+                android:text="5"
+                android:textColor="#FFFFFF"
+                android:textSize="23sp"
+                android:textStyle="bold" />
+
+        </FrameLayout>
+
+    </LinearLayout>
+
+    <!-- 藍底全畫面：準備 / 換穴道 / 結束 -->
+    <FrameLayout
+        android:id="@+id/fullBlueOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#0A4C92"
+        android:visibility="gone">
+
+        <!-- 藍底右上：暫停 -->
+        <TextView
+            android:id="@+id/btnOverlayPauseResume"
+            android:layout_width="74dp"
+            android:layout_height="42dp"
+            android:layout_gravity="top|end"
+            android:layout_marginTop="18dp"
+            android:layout_marginEnd="18dp"
+            android:background="@drawable/bg_acupressure_next_button"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:text="暫停"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <!-- 藍底右上第二顆：跳過 -->
+        <TextView
+            android:id="@+id/btnOverlaySkip"
+            android:layout_width="74dp"
+            android:layout_height="42dp"
+            android:layout_gravity="top|end"
+            android:layout_marginTop="68dp"
+            android:layout_marginEnd="18dp"
+            android:background="@drawable/bg_acupressure_next_button"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:text="跳過"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <!-- 藍底示意圖：寬度吃滿螢幕 -->
+            <ImageView
+                android:id="@+id/overlayAcupointImage"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:adjustViewBounds="true"
+                android:contentDescription="目前穴道示意圖"
+                android:scaleType="fitCenter" />
+
+            <TextView
+                android:id="@+id/overlayTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:gravity="center"
+                android:paddingStart="28dp"
+                android:paddingEnd="28dp"
+                android:text="準備開始"
+                android:textColor="#FFFFFF"
+                android:textSize="24sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/overlayMessage"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:gravity="center"
+                android:paddingStart="28dp"
+                android:paddingEnd="28dp"
+                android:text="請準備按摩目前穴道"
+                android:textColor="#FFFFFF"
+                android:textSize="17sp" />
+
+            <TextView
+                android:id="@+id/overlayCountdown"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="28dp"
+                android:gravity="center"
+                android:text="5"
+                android:textColor="#FFFFFF"
+                android:textSize="78sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btnFinishOk"
+                android:layout_width="160dp"
+                android:layout_height="52dp"
+                android:layout_marginTop="34dp"
+                android:background="@drawable/bg_acupressure_next_button"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:text="確定"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+        </LinearLayout>
+
+    </FrameLayout>
+
+</FrameLayout>
