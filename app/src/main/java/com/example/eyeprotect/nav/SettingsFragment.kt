@@ -2,6 +2,10 @@ package com.example.eyeprotect.nav
 
 import android.content.Context
 import android.content.Intent
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -9,43 +13,54 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchColors
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.AssistChip
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
+import com.example.eyeprotect.PreferenceKeys
 import com.example.eyeprotect.R
+import com.example.eyeprotect.monitoring.NightShiftMode
+import com.example.eyeprotect.monitoring.NightShiftOverlayService
+import com.example.eyeprotect.monitoring.NightShiftProfiles
 import com.example.eyeprotect.ui.theme.EyeDesignTokens
 import com.example.eyeprotect.ui.theme.EyeprotectTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -95,24 +110,72 @@ private fun SettingsScreen(
     )
 
     val context = LocalContext.current
-    val prefs = remember(context) { context.getSharedPreferences(com.example.eyeprotect.PreferenceKeys.PREFS_NAME, Context.MODE_PRIVATE) }
+    val prefs = remember(context) { context.getSharedPreferences(PreferenceKeys.PREFS_NAME, Context.MODE_PRIVATE) }
 
     var darkModeEnabled by remember {
-        mutableStateOf(prefs.getBoolean(com.example.eyeprotect.PreferenceKeys.PREF_DARK_MODE_ENABLED, false))
+        mutableStateOf(prefs.getBoolean(PreferenceKeys.PREF_DARK_MODE_ENABLED, false))
     }
     var autoEyeExerciseEnabled by remember {
-        mutableStateOf(prefs.getBoolean(com.example.eyeprotect.PreferenceKeys.PREF_AUTO_EYE_EXERCISE_ENABLED, false))
+        mutableStateOf(prefs.getBoolean(PreferenceKeys.PREF_AUTO_EYE_EXERCISE_ENABLED, false))
     }
     var walkDetectionEnabled by remember {
-        mutableStateOf(prefs.getBoolean(com.example.eyeprotect.PreferenceKeys.PREF_WALK_DETECTION_ENABLED, false))
+        mutableStateOf(prefs.getBoolean(PreferenceKeys.PREF_WALK_DETECTION_ENABLED, false))
     }
     var autoNightEnabled by remember {
-        mutableStateOf(prefs.getBoolean(com.example.eyeprotect.PreferenceKeys.PREF_AUTO_NIGHT_MODE_ENABLED, false))
+        mutableStateOf(prefs.getBoolean(PreferenceKeys.PREF_AUTO_NIGHT_MODE_ENABLED, false))
+    }
+    var nightShiftEnabled by remember {
+        mutableStateOf(prefs.getBoolean(PreferenceKeys.PREF_NIGHT_SHIFT_ENABLED, false))
+    }
+    var nightShiftMode by remember {
+        mutableStateOf(
+            NightShiftMode.fromPref(
+                prefs.getString(PreferenceKeys.PREF_NIGHT_SHIFT_MODE, NightShiftMode.AUTO.prefValue)
+            )
+        )
+    }
+    var nightShiftManualWarmth by remember {
+        mutableStateOf(
+            prefs.getFloat(
+                PreferenceKeys.PREF_NIGHT_SHIFT_MANUAL_WARMTH,
+                NightShiftProfiles.DEFAULT_MANUAL_WARMTH
+            ).coerceIn(0f, 1f)
+        )
+    }
+    var ambientLux by remember { mutableStateOf(80f) }
+
+    DisposableEffect(context) {
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        val sensor = sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT)
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent?) {
+                ambientLux = event?.values?.firstOrNull() ?: ambientLux
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+        }
+
+        if (sensor != null) {
+            sensorManager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_NORMAL)
+        }
+
+        onDispose {
+            sensorManager.unregisterListener(listener)
+        }
+    }
+
+    LaunchedEffect(nightShiftEnabled) {
+        if (nightShiftEnabled && hasOverlayPermission(context)) {
+            NightShiftOverlayService.start(context)
+        } else if (!nightShiftEnabled) {
+            NightShiftOverlayService.stop(context)
+        }
     }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -133,12 +196,8 @@ private fun SettingsScreen(
                 .fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
             border = BorderStroke(0.5.dp, colors.borderSubtle),
-            colors = CardDefaults.cardColors(
-                containerColor = cardContainerColor
-            ),
-            elevation = CardDefaults.cardElevation(
-                defaultElevation = 0.dp
-            )
+            colors = CardDefaults.cardColors(containerColor = cardContainerColor),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
@@ -150,7 +209,7 @@ private fun SettingsScreen(
                     color = cardTitleTextColor
                 )
                 Text(
-                    text = "更新你的眼睛距離、睜眼程度與坐姿基準。",
+                    text = "完成個人校正後，系統會用你的基準來判斷提醒與監測。",
                     color = cardBodyTextColor,
                     style = MaterialTheme.typography.bodySmall
                 )
@@ -177,18 +236,14 @@ private fun SettingsScreen(
                 .fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
             border = BorderStroke(0.5.dp, colors.borderSubtle),
-            colors = CardDefaults.cardColors(
-                containerColor = cardContainerColor
-            ),
-            elevation = CardDefaults.cardElevation(
-                defaultElevation = 0.dp
-            )
+            colors = CardDefaults.cardColors(containerColor = cardContainerColor),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Text("外觀", style = MaterialTheme.typography.titleMedium, color = cardTitleTextColor)
+                Text("設定", style = MaterialTheme.typography.titleMedium, color = cardTitleTextColor)
 
                 FeatureToggleRow(
                     title = stringResource(id = R.string.eye_settings_dark_mode_title),
@@ -199,7 +254,7 @@ private fun SettingsScreen(
                     switchColors = switchColors,
                     onCheckedChange = { enabled ->
                         darkModeEnabled = enabled
-                        prefs.edit().putBoolean(com.example.eyeprotect.PreferenceKeys.PREF_DARK_MODE_ENABLED, enabled).apply()
+                        prefs.edit().putBoolean(PreferenceKeys.PREF_DARK_MODE_ENABLED, enabled).apply()
                         AppCompatDelegate.setDefaultNightMode(
                             if (enabled) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
                         )
@@ -222,7 +277,7 @@ private fun SettingsScreen(
                     switchColors = switchColors,
                     onCheckedChange = { enabled ->
                         autoEyeExerciseEnabled = enabled
-                        prefs.edit().putBoolean(com.example.eyeprotect.PreferenceKeys.PREF_AUTO_EYE_EXERCISE_ENABLED, enabled).apply()
+                        prefs.edit().putBoolean(PreferenceKeys.PREF_AUTO_EYE_EXERCISE_ENABLED, enabled).apply()
                     }
                 )
 
@@ -247,9 +302,173 @@ private fun SettingsScreen(
                     switchColors = switchColors,
                     onCheckedChange = { enabled ->
                         walkDetectionEnabled = enabled
-                        prefs.edit().putBoolean(com.example.eyeprotect.PreferenceKeys.PREF_WALK_DETECTION_ENABLED, enabled).apply()
+                        prefs.edit().putBoolean(PreferenceKeys.PREF_WALK_DETECTION_ENABLED, enabled).apply()
                     }
                 )
+
+                FeatureToggleRow(
+                    title = stringResource(id = R.string.eye_settings_night_shift_title),
+                    description = stringResource(id = R.string.eye_settings_night_shift_desc),
+                    checked = nightShiftEnabled,
+                    beta = true,
+                    titleColor = cardTitleTextColor,
+                    descriptionColor = cardBodyTextColor,
+                    switchColors = switchColors,
+                    onCheckedChange = { enabled ->
+                        nightShiftEnabled = enabled
+                        prefs.edit().putBoolean(PreferenceKeys.PREF_NIGHT_SHIFT_ENABLED, enabled).apply()
+                    }
+                )
+
+                if (nightShiftEnabled && !hasOverlayPermission(context)) {
+                    Text(
+                        text = stringResource(id = R.string.eye_settings_overlay_permission_hint),
+                        color = cardBodyTextColor,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Button(onClick = { requestOverlayPermission(context) }) {
+                        Text(stringResource(id = R.string.eye_settings_open_overlay_permission))
+                    }
+                }
+
+                if (nightShiftEnabled) {
+                    val recommendedWarmth = NightShiftProfiles.recommendedWarmthForLux(ambientLux)
+                    val recommendedKelvin = NightShiftProfiles.kelvinForWarmth(recommendedWarmth)
+                    val learnedOffset = NightShiftProfiles.learnedOffsetForLux(ambientLux, prefs)
+                    val learnedAutoWarmth = NightShiftProfiles.effectiveAutoWarmth(ambientLux, prefs)
+                    val learnedAutoKelvin = NightShiftProfiles.kelvinForWarmth(learnedAutoWarmth)
+                    val manualKelvin = NightShiftProfiles.kelvinForWarmth(nightShiftManualWarmth)
+
+                    Text(
+                        text = stringResource(id = R.string.eye_settings_night_shift_mode_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = cardTitleTextColor
+                    )
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        FilterChip(
+                            selected = nightShiftMode == NightShiftMode.AUTO,
+                            onClick = {
+                                nightShiftMode = NightShiftMode.AUTO
+                                prefs.edit()
+                                    .putString(PreferenceKeys.PREF_NIGHT_SHIFT_MODE, NightShiftMode.AUTO.prefValue)
+                                    .apply()
+                                if (nightShiftEnabled && hasOverlayPermission(context)) {
+                                    NightShiftOverlayService.start(context)
+                                }
+                            },
+                            label = { Text(stringResource(id = R.string.eye_settings_night_shift_mode_auto)) }
+                        )
+                        FilterChip(
+                            selected = nightShiftMode == NightShiftMode.MANUAL,
+                            onClick = {
+                                nightShiftMode = NightShiftMode.MANUAL
+                                prefs.edit()
+                                    .putString(PreferenceKeys.PREF_NIGHT_SHIFT_MODE, NightShiftMode.MANUAL.prefValue)
+                                    .apply()
+                                if (nightShiftEnabled && hasOverlayPermission(context)) {
+                                    NightShiftOverlayService.start(context)
+                                }
+                            },
+                            label = { Text(stringResource(id = R.string.eye_settings_night_shift_mode_manual)) }
+                        )
+                    }
+
+                    Text(
+                        text = stringResource(
+                            id = R.string.eye_settings_night_shift_recommendation,
+                            recommendedKelvin,
+                            ambientLux.toInt()
+                        ),
+                        color = cardBodyTextColor,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+
+                    if (nightShiftMode == NightShiftMode.AUTO) {
+                        Text(
+                            text = stringResource(
+                                id = R.string.eye_settings_night_shift_auto_applied,
+                                learnedAutoKelvin
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = cardTitleTextColor
+                        )
+                        Text(
+                            text = stringResource(
+                                id = R.string.eye_settings_night_shift_auto_learned_offset,
+                                offsetDescription(learnedOffset)
+                            ),
+                            color = cardBodyTextColor,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Button(
+                            onClick = {
+                                NightShiftProfiles.resetLearnedOffsets(prefs)
+                                if (nightShiftEnabled && hasOverlayPermission(context)) {
+                                    NightShiftOverlayService.start(context)
+                                }
+                            }
+                        ) {
+                            Text(stringResource(id = R.string.eye_settings_night_shift_reset_preference))
+                        }
+                        Text(
+                            text = stringResource(id = R.string.eye_settings_night_shift_auto_hint),
+                            color = cardBodyTextColor,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    } else {
+                        Button(
+                            onClick = {
+                                nightShiftManualWarmth = recommendedWarmth
+                                prefs.edit()
+                                    .putFloat(PreferenceKeys.PREF_NIGHT_SHIFT_MANUAL_WARMTH, recommendedWarmth)
+                                    .apply()
+                                NightShiftProfiles.saveLearnedOffsetForLux(
+                                    prefs = prefs,
+                                    lux = ambientLux,
+                                    manualWarmth = recommendedWarmth
+                                )
+                                if (nightShiftEnabled && hasOverlayPermission(context)) {
+                                    NightShiftOverlayService.start(context)
+                                }
+                            }
+                        ) {
+                            Text(stringResource(id = R.string.eye_settings_night_shift_apply_recommendation))
+                        }
+
+                        Text(
+                            text = stringResource(
+                                id = R.string.eye_settings_night_shift_slider_manual,
+                                manualKelvin
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = cardTitleTextColor
+                        )
+                        Text(
+                            text = stringResource(id = R.string.eye_settings_night_shift_manual_learning_hint),
+                            color = cardBodyTextColor,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Slider(
+                            value = nightShiftManualWarmth,
+                            onValueChange = { nightShiftManualWarmth = it },
+                            onValueChangeFinished = {
+                                prefs.edit()
+                                    .putFloat(PreferenceKeys.PREF_NIGHT_SHIFT_MANUAL_WARMTH, nightShiftManualWarmth)
+                                    .apply()
+                                NightShiftProfiles.saveLearnedOffsetForLux(
+                                    prefs = prefs,
+                                    lux = ambientLux,
+                                    manualWarmth = nightShiftManualWarmth
+                                )
+                                if (nightShiftEnabled && hasOverlayPermission(context)) {
+                                    NightShiftOverlayService.start(context)
+                                }
+                            },
+                            valueRange = 0f..1f
+                        )
+                    }
+                }
 
                 FeatureToggleRow(
                     title = stringResource(id = R.string.eye_settings_auto_night_title),
@@ -260,7 +479,7 @@ private fun SettingsScreen(
                     switchColors = switchColors,
                     onCheckedChange = { enabled ->
                         autoNightEnabled = enabled
-                        prefs.edit().putBoolean(com.example.eyeprotect.PreferenceKeys.PREF_AUTO_NIGHT_MODE_ENABLED, enabled).apply()
+                        prefs.edit().putBoolean(PreferenceKeys.PREF_AUTO_NIGHT_MODE_ENABLED, enabled).apply()
                     }
                 )
             }
@@ -275,7 +494,7 @@ private fun FeatureToggleRow(
     checked: Boolean,
     titleColor: Color,
     descriptionColor: Color,
-    switchColors: androidx.compose.material3.SwitchColors,
+    switchColors: SwitchColors,
     beta: Boolean = false,
     onCheckedChange: (Boolean) -> Unit
 ) {
@@ -314,4 +533,14 @@ private fun requestOverlayPermission(context: Context) {
     context.startActivity(intent)
 }
 
-// Preference keys are shared with the background monitoring service.
+private fun hasOverlayPermission(context: Context): Boolean {
+    return Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(context)
+}
+
+private fun offsetDescription(offset: Float): String {
+    return when {
+        offset > 0.08f -> "偏暖"
+        offset < -0.08f -> "偏冷"
+        else -> "接近預設"
+    }
+}

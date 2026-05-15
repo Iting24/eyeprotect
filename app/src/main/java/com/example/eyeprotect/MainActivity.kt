@@ -1,11 +1,15 @@
 package com.example.eyeprotect
 
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.View
+import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,30 +24,29 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.zIndex
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.ui.zIndex
 import androidx.constraintlayout.widget.ConstraintLayout
-import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.NavOptions
-import com.google.android.material.bottomnavigation.BottomNavigationView
+import androidx.navigation.fragment.NavHostFragment
+import com.example.eyeprotect.monitoring.NightShiftOverlayService
 import com.example.eyeprotect.ui.theme.EyeDesignTokens
 import com.example.eyeprotect.ui.theme.EyeprotectTheme
+import com.google.android.material.bottomnavigation.BottomNavigationView
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -100,6 +103,24 @@ class MainActivity : AppCompatActivity() {
                 bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
             }
         )
+
+        syncNightShiftOverlay()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        syncNightShiftOverlay()
+    }
+
+    private fun syncNightShiftOverlay() {
+        val prefs = getSharedPreferences(PreferenceKeys.PREFS_NAME, MODE_PRIVATE)
+        val nightShiftEnabled = prefs.getBoolean(PreferenceKeys.PREF_NIGHT_SHIFT_ENABLED, false)
+        val hasOverlayPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)
+
+        when {
+            nightShiftEnabled && hasOverlayPermission -> NightShiftOverlayService.start(this)
+            else -> NightShiftOverlayService.stop(this)
+        }
     }
 }
 
@@ -172,6 +193,12 @@ private fun EyeProtectNavigationItem(
         animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
         label = "navItemSize"
     )
+    val tint by animateColorAsState(
+        targetValue = if (selected) Color(0xFF000000) else Color(0xFF8E8E93),
+        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+        label = "navItemTint"
+    )
+
     Box(
         modifier = Modifier
             .size(animatedSize)
@@ -190,7 +217,7 @@ private fun EyeProtectNavigationItem(
                     painter = painterResource(id = item.selectedIconRes),
                     contentDescription = stringResource(id = item.labelRes),
                     modifier = Modifier.size(20.dp),
-                    tint = Color(0xFF000000)
+                    tint = tint
                 )
             }
         } else {
@@ -198,7 +225,7 @@ private fun EyeProtectNavigationItem(
                 painter = painterResource(id = item.iconRes),
                 contentDescription = stringResource(id = item.labelRes),
                 modifier = Modifier.size(20.dp),
-                tint = Color(0xFF8E8E93)
+                tint = tint
             )
         }
     }

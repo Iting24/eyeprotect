@@ -76,6 +76,10 @@
             android:exported="false"
             android:foregroundServiceType="camera" />
 
+        <service
+            android:name="com.example.eyeprotect.monitoring.NightShiftOverlayService"
+            android:exported="false" />
+
     </application>
 
 </manifest>

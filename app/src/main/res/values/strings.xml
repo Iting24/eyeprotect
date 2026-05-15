@@ -53,4 +53,18 @@
 
     <string name="eye_settings_overlay_permission_hint">需要「在其他應用程式上層顯示」權限。</string>
     <string name="eye_settings_open_overlay_permission">前往開啟懸浮窗權限</string>
+    <string name="eye_settings_night_shift_title">Night Shift 模擬</string>
+    <string name="eye_settings_night_shift_desc">以全域暖色濾鏡模擬夜覽效果，並可依環境光自動調整濾鏡強度。</string>
+    <string name="eye_settings_night_shift_mode_title">Night Shift 模式</string>
+    <string name="eye_settings_night_shift_mode_auto">自動</string>
+    <string name="eye_settings_night_shift_mode_manual">手動</string>
+    <string name="eye_settings_night_shift_recommendation">目前環境推薦：%1$dK（約 %2$d lux）</string>
+    <string name="eye_settings_night_shift_apply_recommendation">套用推薦</string>
+    <string name="eye_settings_night_shift_slider_auto">暖度偏好：%1$dK</string>
+    <string name="eye_settings_night_shift_slider_manual">手動暖度：%1$dK</string>
+    <string name="eye_settings_night_shift_auto_applied">目前自動套用：%1$dK</string>
+    <string name="eye_settings_night_shift_auto_learned_offset">已學習偏好：%1$s</string>
+    <string name="eye_settings_night_shift_auto_hint">若你覺得這種光線下太黃或不夠暖，切到手動調整後，系統會記住這種環境的修正。</string>
+    <string name="eye_settings_night_shift_manual_learning_hint">手動調整後，系統會把這次設定記成目前亮度環境的自動偏好。</string>
+    <string name="eye_settings_night_shift_reset_preference">重置學習偏好</string>
 </resources>
