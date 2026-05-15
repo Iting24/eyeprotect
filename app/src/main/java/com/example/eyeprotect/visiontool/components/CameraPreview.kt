@@ -2,6 +2,7 @@ package com.example.eyeprotect.visiontool.components
 
 import android.util.Log
 import android.view.Surface
+import android.graphics.Rect
 import androidx.camera.core.AspectRatio
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -19,14 +20,22 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import com.example.eyeprotect.visiontool.analysis.ColorMaskAnalyzer
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
+
+private data class MaskTransformSnapshot(
+    val imageWidth: Int,
+    val imageHeight: Int,
+    val values: FloatArray
+)
 
 @Composable
 fun CameraPreview(
     modifier: Modifier = Modifier,
     analyzer: ImageAnalysis.Analyzer? = null,
     outputImageFormat: Int = ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888,
+    roiSizePx: Float? = null,
     onPreviewViewReady: (PreviewView) -> Unit = {},
     onMaskTransform: (android.graphics.Matrix, Int, Int) -> Unit = { _, _, _ -> }
 ) {
@@ -37,6 +46,7 @@ fun CameraPreview(
 
     // PreviewView outputTransform must be read on main thread only.
     val outputTransformRef = remember { AtomicReference<OutputTransform?>(null) }
+    val lastMaskTransformRef = remember { AtomicReference<MaskTransformSnapshot?>(null) }
 
     DisposableEffect(Unit) {
         onDispose {
@@ -81,9 +91,13 @@ fun CameraPreview(
                         .setTargetRotation(Surface.ROTATION_0)
 
                     if (viewW > 0 && viewH > 0) {
-                        val target = android.util.Size(viewW, viewH)
-                        previewBuilder.setTargetResolution(target)
-                        analysisBuilder.setTargetResolution(target)
+                        val previewTarget = android.util.Size(viewW, viewH)
+                        val analysisTarget = android.util.Size(
+                            ((viewW / 2).coerceAtLeast(360) / 2) * 2,
+                            ((viewH / 2).coerceAtLeast(360) / 2) * 2
+                        )
+                        previewBuilder.setTargetResolution(previewTarget)
+                        analysisBuilder.setTargetResolution(analysisTarget)
                     } else {
                         previewBuilder.setTargetAspectRatio(AspectRatio.RATIO_16_9)
                         analysisBuilder.setTargetAspectRatio(AspectRatio.RATIO_16_9)
@@ -111,7 +125,47 @@ fun CameraPreview(
 
                                 val matrix = android.graphics.Matrix()
                                 matrix.setPolyToPoly(src, 0, dst, 0, 4)
-                                onMaskTransform(matrix, image.width, image.height)
+                                val values = FloatArray(9)
+                                matrix.getValues(values)
+                                val snapshot = MaskTransformSnapshot(
+                                    imageWidth = image.width,
+                                    imageHeight = image.height,
+                                    values = values
+                                )
+                                val previous = lastMaskTransformRef.get()
+                                val changed = previous == null ||
+                                    previous.imageWidth != snapshot.imageWidth ||
+                                    previous.imageHeight != snapshot.imageHeight ||
+                                    !previous.values.contentEquals(snapshot.values)
+                                if (changed) {
+                                    lastMaskTransformRef.set(snapshot)
+                                    onMaskTransform(matrix, image.width, image.height)
+                                }
+
+                                if (base is ColorMaskAnalyzer && roiSizePx != null && roiSizePx > 0f) {
+                                    val roiHalf = roiSizePx / 2f
+                                    val previewCx = previewView.width / 2f
+                                    val previewCy = previewView.height / 2f
+                                    val previewRoiPoints = floatArrayOf(
+                                        previewCx - roiHalf, previewCy - roiHalf,
+                                        previewCx + roiHalf, previewCy - roiHalf,
+                                        previewCx + roiHalf, previewCy + roiHalf,
+                                        previewCx - roiHalf, previewCy + roiHalf
+                                    )
+                                    val inverse = android.graphics.Matrix()
+                                    if (matrix.invert(inverse)) {
+                                        inverse.mapPoints(previewRoiPoints)
+                                        val xs = listOf(previewRoiPoints[0], previewRoiPoints[2], previewRoiPoints[4], previewRoiPoints[6])
+                                        val ys = listOf(previewRoiPoints[1], previewRoiPoints[3], previewRoiPoints[5], previewRoiPoints[7])
+                                        val roiRect = Rect(
+                                            xs.min().toInt().coerceAtLeast(0),
+                                            ys.min().toInt().coerceAtLeast(0),
+                                            xs.max().toInt().coerceAtMost(image.width),
+                                            ys.max().toInt().coerceAtMost(image.height)
+                                        )
+                                        base.setAnalysisRoi(roiRect)
+                                    }
+                                }
                             }
 
                             base.analyze(image)

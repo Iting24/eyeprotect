@@ -1,13 +1,16 @@
-package com.example.eyeprotect.visiontool.analysis
+﻿package com.example.eyeprotect.visiontool.analysis
 
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.Rect
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import com.example.eyeprotect.visiontool.viewmodel.AssistMode
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.min
 
 /**
  * Lightweight HSV color mask analyzer.
@@ -24,16 +27,29 @@ class ColorMaskAnalyzer(
     private val blurThreshold: Int = 3
 ) : ImageAnalysis.Analyzer {
 
-    private val modeRef = AtomicReference(initialMode)
+    private val modesRef = AtomicReference<Set<AssistMode>>(setOf(initialMode))
+    private val orderedModesRef = AtomicReference<List<AssistMode>>(
+        listOf(initialMode).sortedBy { modePriority(it) }
+    )
+    private val analysisRoiRef = AtomicReference<Rect?>(null)
+    private var srcMaskBuffer = BooleanArray(0)
+    private var blurMaskBufferA = BooleanArray(0)
+    private var blurMaskBufferB = BooleanArray(0)
+    private var pixelBuffer = IntArray(0)
 
-    fun setMode(mode: AssistMode) {
-        modeRef.set(mode)
+    fun setModes(modes: Set<AssistMode>) {
+        modesRef.set(modes)
+        orderedModesRef.set(modes.sortedBy { modePriority(it) })
+    }
+
+    fun setAnalysisRoi(rect: Rect?) {
+        analysisRoiRef.set(rect?.let { Rect(it) })
     }
 
     override fun analyze(image: ImageProxy) {
         try {
-            val mode = modeRef.get()
-            if (mode == AssistMode.NONE) {
+            val modes = modesRef.get()
+            if (modes.isEmpty() || modes == setOf(AssistMode.NONE)) {
                 onMaskReady(null)
                 return
             }
@@ -51,23 +67,48 @@ class ColorMaskAnalyzer(
                 return
             }
 
-            if (mode == AssistMode.ALL) {
-                val full = Bitmap.createBitmap(maskW, maskH, Bitmap.Config.ARGB_8888)
-                full.eraseColor(0xFFFFFFFF.toInt())
-                onMaskReady(full)
-                return
-            }
-
             val rowStride = image.planes[0].rowStride
             val pixelStride = image.planes[0].pixelStride
 
             val hsv = FloatArray(3)
-            val srcMask = BooleanArray(maskW * maskH)
+            val total = maskW * maskH
+            val roi = analysisRoiRef.get()
+            val effectiveRoi = roi?.let {
+                Rect(
+                    max(crop.left, it.left),
+                    max(crop.top, it.top),
+                    min(crop.right, it.right),
+                    min(crop.bottom, it.bottom)
+                )
+            }?.takeIf { it.width() > 0 && it.height() > 0 }
 
-            for (y in 0 until maskH) {
+            val roiMaskLeft = effectiveRoi?.let { max(0, (it.left - crop.left) / step) } ?: 0
+            val roiMaskTop = effectiveRoi?.let { max(0, (it.top - crop.top) / step) } ?: 0
+            val roiMaskRight = effectiveRoi?.let { min(maskW, max(roiMaskLeft + 1, (it.right - crop.left + step - 1) / step)) } ?: maskW
+            val roiMaskBottom = effectiveRoi?.let { min(maskH, max(roiMaskTop + 1, (it.bottom - crop.top + step - 1) / step)) } ?: maskH
+
+            val relaxGreenTowardYellow = shouldRelaxGreenTowardYellow(
+                modes = modes,
+                buffer = buffer,
+                hsv = hsv,
+                cropLeft = crop.left,
+                cropTop = crop.top,
+                roiMaskLeft = roiMaskLeft,
+                roiMaskTop = roiMaskTop,
+                roiMaskRight = roiMaskRight,
+                roiMaskBottom = roiMaskBottom,
+                step = step,
+                rowStride = rowStride,
+                pixelStride = pixelStride
+            )
+
+            val srcMask = ensureMaskCapacity(total)
+            val orderedModes = orderedModesRef.get()
+
+            for (y in roiMaskTop until roiMaskBottom) {
                 val srcY = crop.top + y * step
                 val rowOffset = srcY * rowStride
-                for (x in 0 until maskW) {
+                for (x in roiMaskLeft until roiMaskRight) {
                     val srcX = crop.left + x * step
                     val offset = rowOffset + srcX * pixelStride
                     val r = getByteAsInt(buffer, offset)
@@ -75,22 +116,40 @@ class ColorMaskAnalyzer(
                     val b = getByteAsInt(buffer, offset + 2)
 
                     Color.RGBToHSV(r, g, b, hsv)
-                    val matched = isTargetColor(hsv, mode)
+                    var matched = false
+                    for (mode in orderedModes) {
+                        if (mode == AssistMode.NONE) continue
+                        if (isTargetColor(hsv, mode, r, g, b, relaxGreenTowardYellow)) {
+                            matched = true
+                            break
+                        }
+                    }
                     srcMask[y * maskW + x] = matched
                 }
             }
 
             val smoothed = if (blurPasses > 0) {
-                blurAndThreshold(srcMask, maskW, maskH, blurPasses, blurThreshold)
+                blurAndThreshold(
+                    src = srcMask,
+                    width = maskW,
+                    height = maskH,
+                    passes = blurPasses,
+                    threshold = blurThreshold,
+                    roiLeft = roiMaskLeft,
+                    roiTop = roiMaskTop,
+                    roiRight = roiMaskRight,
+                    roiBottom = roiMaskBottom
+                )
             } else {
                 srcMask
             }
 
-            val maskBitmap = Bitmap.createBitmap(maskW, maskH, Bitmap.Config.ARGB_8888)
+            val pixels = ensurePixelCapacity(smoothed.size)
             for (i in smoothed.indices) {
-                val color = if (smoothed[i]) 0xFFFFFFFF.toInt() else 0x00FFFFFF
-                maskBitmap.setPixel(i % maskW, i / maskW, color)
+                pixels[i] = if (smoothed[i]) 0xFFFFFFFF.toInt() else 0x00FFFFFF
             }
+            val maskBitmap = Bitmap.createBitmap(maskW, maskH, Bitmap.Config.ARGB_8888)
+            maskBitmap.setPixels(pixels, 0, maskW, 0, 0, maskW, maskH)
 
             onMaskReady(maskBitmap)
         } finally {
@@ -103,13 +162,17 @@ class ColorMaskAnalyzer(
         width: Int,
         height: Int,
         passes: Int,
-        threshold: Int
+        threshold: Int,
+        roiLeft: Int,
+        roiTop: Int,
+        roiRight: Int,
+        roiBottom: Int
     ): BooleanArray {
         var current = src
         repeat(passes) {
-            val next = BooleanArray(width * height)
-            for (y in 0 until height) {
-                for (x in 0 until width) {
+            val next = ensureBlurMaskCapacity(width * height, current)
+            for (y in roiTop until roiBottom) {
+                for (x in roiLeft until roiRight) {
                     var count = 0
                     for (dy in -1..1) {
                         val ny = y + dy
@@ -128,25 +191,190 @@ class ColorMaskAnalyzer(
         return current
     }
 
+    private fun ensureMaskCapacity(size: Int): BooleanArray {
+        if (srcMaskBuffer.size != size) {
+            srcMaskBuffer = BooleanArray(size)
+        } else {
+            srcMaskBuffer.fill(false)
+        }
+        return srcMaskBuffer
+    }
+
+    private fun ensureBlurMaskCapacity(size: Int, current: BooleanArray): BooleanArray {
+        val target =
+            if (current === blurMaskBufferA) {
+                if (blurMaskBufferB.size != size) blurMaskBufferB = BooleanArray(size) else blurMaskBufferB.fill(false)
+                blurMaskBufferB
+            } else {
+                if (blurMaskBufferA.size != size) blurMaskBufferA = BooleanArray(size) else blurMaskBufferA.fill(false)
+                blurMaskBufferA
+            }
+        return target
+    }
+
+    private fun ensurePixelCapacity(size: Int): IntArray {
+        if (pixelBuffer.size != size) {
+            pixelBuffer = IntArray(size)
+        }
+        return pixelBuffer
+    }
+
     private fun getByteAsInt(buffer: ByteBuffer, index: Int): Int {
         return buffer.get(index).toInt() and 0xFF
     }
 
-    private fun isTargetColor(hsv: FloatArray, mode: AssistMode): Boolean {
+    private fun shouldRelaxGreenTowardYellow(
+        modes: Set<AssistMode>,
+        buffer: ByteBuffer,
+        hsv: FloatArray,
+        cropLeft: Int,
+        cropTop: Int,
+        roiMaskLeft: Int,
+        roiMaskTop: Int,
+        roiMaskRight: Int,
+        roiMaskBottom: Int,
+        step: Int,
+        rowStride: Int,
+        pixelStride: Int
+    ): Boolean {
+        if (!modes.contains(AssistMode.GREEN) || !modes.contains(AssistMode.YELLOW)) {
+            return false
+        }
+
+        var greenishCount = 0
+        var yellowishCount = 0
+        val roiArea = max(1, (roiMaskRight - roiMaskLeft) * (roiMaskBottom - roiMaskTop))
+        val minHits = max(20, roiArea / 100) // 1% of ROI pixels, at least 20
+
+        for (y in roiMaskTop until roiMaskBottom) {
+            val srcY = cropTop + y * step
+            val rowOffset = srcY * rowStride
+            for (x in roiMaskLeft until roiMaskRight) {
+                val srcX = cropLeft + x * step
+                val offset = rowOffset + srcX * pixelStride
+                val r = getByteAsInt(buffer, offset)
+                val g = getByteAsInt(buffer, offset + 1)
+                val b = getByteAsInt(buffer, offset + 2)
+
+                Color.RGBToHSV(r, g, b, hsv)
+                val h = hsv[0]
+                val s = hsv[1]
+                val v = hsv[2]
+
+                if (s >= 0.22f && v >= 0.22f && isInRange(h, 65f, 165f)) {
+                    greenishCount++
+                }
+                if (s >= 0.22f && v >= 0.24f && isInRange(h, 44f, 56f)) {
+                    yellowishCount++
+                }
+                if (greenishCount >= minHits && yellowishCount >= minHits) {
+                    return true
+                }
+            }
+        }
+
+        return false
+    }
+
+    private fun modePriority(mode: AssistMode): Int {
+        return when (mode) {
+            AssistMode.BROWN -> 0
+            AssistMode.ORANGE -> 1
+            AssistMode.YELLOW -> 2
+            AssistMode.GREEN -> 3
+            AssistMode.RED -> 4
+            AssistMode.BLUE -> 5
+            AssistMode.INDIGO -> 6
+            AssistMode.PURPLE -> 7
+            AssistMode.GRAY -> 8
+            AssistMode.NONE -> 9
+        }
+    }
+
+    private fun isTargetColor(
+        hsv: FloatArray,
+        mode: AssistMode,
+        r: Int,
+        g: Int,
+        b: Int,
+        relaxGreenTowardYellow: Boolean
+    ): Boolean {
         val h = hsv[0]
         val s = hsv[1]
         val v = hsv[2]
 
-        val minS = if (mode == AssistMode.YELLOW) 0.45f else 0.35f
-        val minV = if (mode == AssistMode.YELLOW) 0.45f else 0.35f
+        val minS = when (mode) {
+            AssistMode.YELLOW -> 0.30f
+            AssistMode.GREEN -> 0.22f
+            AssistMode.RED -> 0.47f
+            AssistMode.BLUE -> 0.20f
+            AssistMode.ORANGE -> 0.56f
+            AssistMode.BROWN -> 0.48f
+            AssistMode.INDIGO -> 0.22f
+            AssistMode.PURPLE -> 0.18f
+            AssistMode.GRAY -> 0.06f
+            AssistMode.NONE -> 0.35f
+        }
+        val minV = when (mode) {
+            AssistMode.YELLOW -> 0.42f
+            AssistMode.GREEN -> 0.22f
+            AssistMode.RED -> 0.47f
+            AssistMode.BLUE -> 0.20f
+            AssistMode.ORANGE -> 0.70f
+            AssistMode.BROWN -> 0.48f
+            AssistMode.INDIGO -> 0.20f
+            AssistMode.PURPLE -> 0.18f
+            AssistMode.GRAY -> 0.10f
+            AssistMode.NONE -> 0.35f
+        }
         if (s < minS || v < minV) return false
 
+        val rgbDominant = when (mode) {
+            AssistMode.RED -> r >= 165 && r - max(g, b) >= 62 && v >= 0.58f
+            AssistMode.BLUE -> b >= 120 && b - max(r, g) >= 40
+            AssistMode.GREEN -> g >= 100 && g >= r + 5 && g + 5 >= b
+            AssistMode.YELLOW -> {
+                val minRG = min(r, g)
+                val rgBalanced = abs(r - g) <= 20
+                val blueLow = b <= 92
+                val nearYellow = r >= g - 3
+                minRG >= 150 && rgBalanced && blueLow && nearYellow
+            }
+            AssistMode.ORANGE -> {
+                val redLeads = r >= g + 16
+                val greenStrong = g >= 135
+                val blueLow = b <= 72
+                val brightEnough = v >= 0.78f
+                val saturatedEnough = s >= 0.68f
+                redLeads && greenStrong && blueLow && brightEnough && saturatedEnough
+            }
+            AssistMode.BROWN -> {
+                val redLead = r - g in 25..65
+                val blueBand = b in 24..88
+                val midBrightness = v in 0.50f..0.82f
+                val notBrightOrange = !(v >= 0.77f && s >= 0.70f && (r - g >= 43 || h >= 41f))
+                redLead && blueBand && midBrightness && notBrightOrange
+            }
+            AssistMode.INDIGO -> b >= 90 && r <= 120 && g <= 120
+            AssistMode.PURPLE -> r >= 85 && b >= 85 && g <= 175
+            AssistMode.GRAY -> abs(r - g) <= 12 && abs(g - b) <= 12
+            AssistMode.NONE -> true
+        }
+        if (!rgbDominant) return false
+
         return when (mode) {
-            AssistMode.YELLOW -> isInRange(h, 48f, 65f)
+            AssistMode.YELLOW -> isInRange(h, 47f, 58f)
+            AssistMode.GREEN -> {
+                val minHue = if (relaxGreenTowardYellow) 62f else 68f
+                isInRange(h, minHue, 165f)
+            }
             AssistMode.RED -> isInRange(h, 0f, 10f) || isInRange(h, 350f, 360f)
-            AssistMode.GREEN -> isInRange(h, 80f, 150f)
-            AssistMode.BLUE -> isInRange(h, 190f, 250f)
-            AssistMode.ALL -> true
+            AssistMode.BLUE -> isInRange(h, 200f, 235f)
+            AssistMode.ORANGE -> isInRange(h, 29f, 42f)
+            AssistMode.BROWN -> isInRange(h, 34f, 44f)
+            AssistMode.INDIGO -> isInRange(h, 235f, 265f)
+            AssistMode.PURPLE -> isInRange(h, 250f, 300f)
+            AssistMode.GRAY -> s <= 0.10f
             AssistMode.NONE -> false
         }
     }
@@ -155,3 +383,9 @@ class ColorMaskAnalyzer(
         return value >= min && value <= max
     }
 }
+
+
+
+
+
+
