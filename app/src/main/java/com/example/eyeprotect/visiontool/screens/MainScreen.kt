@@ -19,6 +19,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,6 +46,7 @@ import com.example.eyeprotect.visiontool.viewmodel.MainViewModel
 @Composable
 fun MainScreen(viewModel: MainViewModel) {
     val selectedModes by viewModel.selectedModes.collectAsState()
+    val torchEnabled by viewModel.torchEnabled.collectAsState()
     val alpha by viewModel.textureAlpha.collectAsState()
     val maskBitmap by viewModel.maskBitmap.collectAsState()
     val maskTransform by viewModel.maskTransform.collectAsState()
@@ -104,6 +106,7 @@ fun MainScreen(viewModel: MainViewModel) {
             modifier = Modifier.fillMaxSize(),
             analyzer = analyzer,
             roiSizePx = roiSizePx,
+            torchEnabled = torchEnabled,
             onPreviewViewReady = { previewView = it },
             onMaskTransform = { matrix, w, h -> viewModel.setMaskTransform(matrix, w, h) }
         )
@@ -129,6 +132,33 @@ fun MainScreen(viewModel: MainViewModel) {
                     shape = RoundedCornerShape(16.dp)
                 )
         )
+
+        Surface(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 16.dp, end = 16.dp),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+            shape = RoundedCornerShape(20.dp),
+            tonalElevation = 4.dp
+        ) {
+            Box(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+            ) {
+                androidx.compose.foundation.layout.Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Flashlight",
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Switch(
+                        checked = torchEnabled,
+                        onCheckedChange = { viewModel.setTorchEnabled(it) }
+                    )
+                }
+            }
+        }
 
         Box(
             modifier = Modifier

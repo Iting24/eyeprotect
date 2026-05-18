@@ -305,8 +305,8 @@ class ColorMaskAnalyzer(
 
         val minS = when (mode) {
             AssistMode.YELLOW -> 0.30f
-            AssistMode.GREEN -> 0.22f
-            AssistMode.RED -> 0.47f
+            AssistMode.GREEN -> 0.18f
+            AssistMode.RED -> 0.40f
             AssistMode.BLUE -> 0.20f
             AssistMode.ORANGE -> 0.56f
             AssistMode.BROWN -> 0.48f
@@ -317,8 +317,8 @@ class ColorMaskAnalyzer(
         }
         val minV = when (mode) {
             AssistMode.YELLOW -> 0.42f
-            AssistMode.GREEN -> 0.22f
-            AssistMode.RED -> 0.47f
+            AssistMode.GREEN -> 0.18f
+            AssistMode.RED -> 0.36f
             AssistMode.BLUE -> 0.20f
             AssistMode.ORANGE -> 0.70f
             AssistMode.BROWN -> 0.48f
@@ -330,9 +330,9 @@ class ColorMaskAnalyzer(
         if (s < minS || v < minV) return false
 
         val rgbDominant = when (mode) {
-            AssistMode.RED -> r >= 165 && r - max(g, b) >= 62 && v >= 0.58f
+            AssistMode.RED -> r >= 138 && r - max(g, b) >= 44 && v >= 0.38f
             AssistMode.BLUE -> b >= 120 && b - max(r, g) >= 40
-            AssistMode.GREEN -> g >= 100 && g >= r + 5 && g + 5 >= b
+            AssistMode.GREEN -> g >= 76 && g >= r + 1 && g + 8 >= b
             AssistMode.YELLOW -> {
                 val minRG = min(r, g)
                 val rgBalanced = abs(r - g) <= 20
@@ -365,10 +365,10 @@ class ColorMaskAnalyzer(
         return when (mode) {
             AssistMode.YELLOW -> isInRange(h, 47f, 58f)
             AssistMode.GREEN -> {
-                val minHue = if (relaxGreenTowardYellow) 62f else 68f
+                val minHue = if (relaxGreenTowardYellow) 60f else 66f
                 isInRange(h, minHue, 165f)
             }
-            AssistMode.RED -> isInRange(h, 0f, 10f) || isInRange(h, 350f, 360f)
+            AssistMode.RED -> isInRange(h, 0f, 13f) || isInRange(h, 346f, 360f)
             AssistMode.BLUE -> isInRange(h, 200f, 235f)
             AssistMode.ORANGE -> isInRange(h, 29f, 42f)
             AssistMode.BROWN -> isInRange(h, 34f, 44f)
