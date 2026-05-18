@@ -4,6 +4,7 @@ import android.util.Log
 import android.view.Surface
 import android.graphics.Rect
 import androidx.camera.core.AspectRatio
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
@@ -36,6 +37,7 @@ fun CameraPreview(
     analyzer: ImageAnalysis.Analyzer? = null,
     outputImageFormat: Int = ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888,
     roiSizePx: Float? = null,
+    torchEnabled: Boolean = false,
     onPreviewViewReady: (PreviewView) -> Unit = {},
     onMaskTransform: (android.graphics.Matrix, Int, Int) -> Unit = { _, _, _ -> }
 ) {
@@ -47,6 +49,7 @@ fun CameraPreview(
     // PreviewView outputTransform must be read on main thread only.
     val outputTransformRef = remember { AtomicReference<OutputTransform?>(null) }
     val lastMaskTransformRef = remember { AtomicReference<MaskTransformSnapshot?>(null) }
+    val cameraRef = remember { AtomicReference<Camera?>(null) }
 
     DisposableEffect(Unit) {
         onDispose {
@@ -178,12 +181,14 @@ fun CameraPreview(
 
                     try {
                         cameraProvider.unbindAll()
-                        cameraProvider.bindToLifecycle(
+                        val camera = cameraProvider.bindToLifecycle(
                             lifecycleOwner,
                             CameraSelector.DEFAULT_BACK_CAMERA,
                             preview,
                             *listOfNotNull(imageAnalysis).toTypedArray()
                         )
+                        cameraRef.set(camera)
+                        camera.cameraControl.enableTorch(torchEnabled)
                     } catch (e: Exception) {
                         Log.e("CameraPreview", "Camera bind failed", e)
                     }
@@ -191,6 +196,9 @@ fun CameraPreview(
             }, executor)
 
             previewView
+        },
+        update = {
+            cameraRef.get()?.cameraControl?.enableTorch(torchEnabled)
         },
         modifier = modifier
     )

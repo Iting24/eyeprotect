@@ -30,6 +30,9 @@ class MainViewModel : ViewModel() {
     private val _selectedModes = MutableStateFlow<Set<AssistMode>>(setOf(AssistMode.NONE))
     val selectedModes: StateFlow<Set<AssistMode>> = _selectedModes.asStateFlow()
 
+    private val _torchEnabled = MutableStateFlow(false)
+    val torchEnabled: StateFlow<Boolean> = _torchEnabled.asStateFlow()
+
     private val _textureAlpha = MutableStateFlow(1f)
     val textureAlpha: StateFlow<Float> = _textureAlpha.asStateFlow()
 
@@ -58,6 +61,10 @@ class MainViewModel : ViewModel() {
 
     fun setAlpha(alpha: Float) {
         _textureAlpha.value = alpha
+    }
+
+    fun setTorchEnabled(enabled: Boolean) {
+        _torchEnabled.value = enabled
     }
 
     fun setMaskBitmap(bitmap: Bitmap?) {
