@@ -286,8 +286,7 @@ class ColorMaskAnalyzer(
             AssistMode.BLUE -> 5
             AssistMode.INDIGO -> 6
             AssistMode.PURPLE -> 7
-            AssistMode.GRAY -> 8
-            AssistMode.NONE -> 9
+            AssistMode.NONE -> 8
         }
     }
 
@@ -311,8 +310,7 @@ class ColorMaskAnalyzer(
             AssistMode.ORANGE -> 0.56f
             AssistMode.BROWN -> 0.48f
             AssistMode.INDIGO -> 0.22f
-            AssistMode.PURPLE -> 0.18f
-            AssistMode.GRAY -> 0.06f
+            AssistMode.PURPLE -> 0.12f
             AssistMode.NONE -> 0.35f
         }
         val minV = when (mode) {
@@ -323,8 +321,7 @@ class ColorMaskAnalyzer(
             AssistMode.ORANGE -> 0.70f
             AssistMode.BROWN -> 0.48f
             AssistMode.INDIGO -> 0.20f
-            AssistMode.PURPLE -> 0.18f
-            AssistMode.GRAY -> 0.10f
+            AssistMode.PURPLE -> 0.14f
             AssistMode.NONE -> 0.35f
         }
         if (s < minS || v < minV) return false
@@ -332,7 +329,7 @@ class ColorMaskAnalyzer(
         val rgbDominant = when (mode) {
             AssistMode.RED -> r >= 138 && r - max(g, b) >= 44 && v >= 0.38f
             AssistMode.BLUE -> b >= 120 && b - max(r, g) >= 40
-            AssistMode.GREEN -> g >= 76 && g >= r + 1 && g + 8 >= b
+            AssistMode.GREEN -> g >= 76 && g >= r + 1 && g + 6 >= b
             AssistMode.YELLOW -> {
                 val minRG = min(r, g)
                 val rgBalanced = abs(r - g) <= 20
@@ -356,8 +353,7 @@ class ColorMaskAnalyzer(
                 redLead && blueBand && midBrightness && notBrightOrange
             }
             AssistMode.INDIGO -> b >= 90 && r <= 120 && g <= 120
-            AssistMode.PURPLE -> r >= 85 && b >= 85 && g <= 175
-            AssistMode.GRAY -> abs(r - g) <= 12 && abs(g - b) <= 12
+            AssistMode.PURPLE -> r >= 72 && b >= 78 && g <= 195
             AssistMode.NONE -> true
         }
         if (!rgbDominant) return false
@@ -366,15 +362,14 @@ class ColorMaskAnalyzer(
             AssistMode.YELLOW -> isInRange(h, 47f, 58f)
             AssistMode.GREEN -> {
                 val minHue = if (relaxGreenTowardYellow) 60f else 66f
-                isInRange(h, minHue, 165f)
+                isInRange(h, minHue, 168f)
             }
             AssistMode.RED -> isInRange(h, 0f, 13f) || isInRange(h, 346f, 360f)
             AssistMode.BLUE -> isInRange(h, 200f, 235f)
             AssistMode.ORANGE -> isInRange(h, 29f, 42f)
             AssistMode.BROWN -> isInRange(h, 34f, 44f)
             AssistMode.INDIGO -> isInRange(h, 235f, 265f)
-            AssistMode.PURPLE -> isInRange(h, 250f, 300f)
-            AssistMode.GRAY -> s <= 0.10f
+            AssistMode.PURPLE -> isInRange(h, 245f, 312f)
             AssistMode.NONE -> false
         }
     }

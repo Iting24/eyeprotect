@@ -16,7 +16,6 @@ enum class AssistMode(val title: String) {
     BROWN("Brown"),
     INDIGO("Indigo"),
     PURPLE("Purple"),
-    GRAY("Gray"),
     NONE("Off")
 }
 

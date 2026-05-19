@@ -70,7 +70,6 @@ fun MainScreen(
         AssistMode.BROWN -> Color(0xFF6D4C41)
         AssistMode.INDIGO -> Color(0xFF3949AB)
         AssistMode.PURPLE -> Color(0xFF8E24AA)
-        AssistMode.GRAY -> Color(0xFF757575)
         AssistMode.NONE -> MaterialTheme.colorScheme.outline
     }
 
@@ -79,7 +78,6 @@ fun MainScreen(
             activeMode == AssistMode.BLUE ||
             activeMode == AssistMode.YELLOW ||
             activeMode == AssistMode.GREEN ||
-            activeMode == AssistMode.GRAY ||
             activeMode == AssistMode.RED ||
             activeMode == AssistMode.INDIGO ||
             activeMode == AssistMode.PURPLE ||
@@ -216,7 +214,7 @@ fun MainScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                items(listOf(AssistMode.RED, AssistMode.ORANGE, AssistMode.YELLOW, AssistMode.GREEN, AssistMode.BLUE, AssistMode.PURPLE, AssistMode.GRAY, AssistMode.BROWN)) { mode ->
+                items(listOf(AssistMode.RED, AssistMode.ORANGE, AssistMode.YELLOW, AssistMode.GREEN, AssistMode.BLUE, AssistMode.PURPLE, AssistMode.BROWN)) { mode ->
                     val isSelected = selectedModes.contains(mode)
                     FilterChip(
                         selected = isSelected,
