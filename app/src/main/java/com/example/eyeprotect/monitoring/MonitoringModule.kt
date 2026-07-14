@@ -10,5 +10,8 @@ import dagger.hilt.components.SingletonComponent
 abstract class MonitoringModule {
     @Binds
     abstract fun bindMonitoringRepository(impl: InMemoryMonitoringRepository): MonitoringRepository
+
+    @Binds
+    abstract fun bindMonitoringReportRepository(impl: RoomMonitoringReportRepository): MonitoringReportRepository
 }
 

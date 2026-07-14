@@ -27,8 +27,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
-import com.example.eyeprotect.monitoring.DetectorManager
 import com.example.eyeprotect.monitoring.DeepNightLyingReminder
+import com.example.eyeprotect.monitoring.DetectorManager
 import com.example.eyeprotect.monitoring.LiveMonitoringStore
 import com.example.eyeprotect.monitoring.MonitoringMetrics
 import com.google.mlkit.vision.face.FaceDetector
@@ -194,7 +194,9 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
                     speakWarning("請保持距離", priority = true)
                 } else {
                     val didSpeak = speakWarning("請保持距離")
-                    if (didSpeak) vibrateWarning()
+                    if (didSpeak) {
+                        vibrateWarning()
+                    }
                 }
             } else if (isTooCloseOverlayShown) {
                 hideScreenOverlay()
@@ -202,13 +204,13 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
             }
 
             val postureText = mutableListOf<String>()
-            if (warnings.contains(WarningState.SQUINTING)) postureText.add("不要瞇眼")
-            if (warnings.contains(WarningState.SLOUCHING)) postureText.add("請坐端正")
+            if (warnings.contains(WarningState.SQUINTING)) postureText.add("請放鬆眼睛")
+            if (warnings.contains(WarningState.SLOUCHING)) postureText.add("請坐直")
             if (warnings.contains(WarningState.LYING)) {
                 val now = SystemClock.uptimeMillis()
                 if (now - lastLyingAlertTimestamp >= LYING_ALERT_COOLDOWN_MS) {
                     lastLyingAlertTimestamp = now
-                    postureText.add("不要躺著滑手機")
+                    postureText.add("請避免躺姿使用")
                 }
             }
 
@@ -302,12 +304,12 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
 
     private fun voiceNameSuggestsMale(name: String): Boolean {
         val normalized = name.lowercase(Locale.US)
-        return normalized.contains("male") || normalized.contains("man") || normalized.contains("m-") || normalized.contains("男")
+        return normalized.contains("male") || normalized.contains("man") || normalized.contains("m-")
     }
 
     private fun voiceNameSuggestsFemale(name: String): Boolean {
         val normalized = name.lowercase(Locale.US)
-        return normalized.contains("female") || normalized.contains("woman") || normalized.contains("f-") || normalized.contains("女")
+        return normalized.contains("female") || normalized.contains("woman") || normalized.contains("f-")
     }
 
     private fun showScreenOverlay() {

@@ -26,5 +26,10 @@ object DatabaseModule {
     fun provideEyeHealthDao(
         database: EyeHealthDatabase,
     ): EyeHealthDao = database.eyeHealthDao()
+
+    @Provides
+    fun provideMonitoringReportDao(
+        database: EyeHealthDatabase,
+    ): MonitoringReportDao = database.monitoringReportDao()
 }
 

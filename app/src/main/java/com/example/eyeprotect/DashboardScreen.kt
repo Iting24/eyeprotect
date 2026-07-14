@@ -204,8 +204,10 @@ fun DashboardScreen(
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context, intent: Intent) {
                 if (intent.action != EyeHealthAccessibilityService.ACTION_LIVE_METRICS) return
+                val incomingWarningsMask =
+                    intent.getIntExtra(EyeHealthAccessibilityService.EXTRA_LIVE_WARNINGS_MASK, warningsMask)
                 liveTs = intent.getLongExtra(EyeHealthAccessibilityService.EXTRA_LIVE_TS, liveTs)
-                warningsMask = intent.getIntExtra(EyeHealthAccessibilityService.EXTRA_LIVE_WARNINGS_MASK, warningsMask)
+                warningsMask = incomingWarningsMask
                 lastWasCameraFrame = intent.getBooleanExtra(EyeHealthAccessibilityService.EXTRA_LIVE_IS_CAMERA_FRAME, lastWasCameraFrame)
                 faceDetected = intent.getBooleanExtra(EyeHealthAccessibilityService.EXTRA_LIVE_FACE_DETECTED, faceDetected)
                 poseDetected = intent.getBooleanExtra(EyeHealthAccessibilityService.EXTRA_LIVE_POSE_DETECTED, poseDetected)
@@ -279,8 +281,6 @@ fun DashboardScreen(
                 monitoringEnabled = false
                 prefs.edit().putBoolean(EyeHealthAccessibilityService.PREF_MONITORING_ENABLED, false).apply()
             }
-        } else {
-            MonitoringForegroundService.stop(context)
         }
     }
 

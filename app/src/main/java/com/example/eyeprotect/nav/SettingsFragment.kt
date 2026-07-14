@@ -9,6 +9,7 @@ import android.hardware.SensorManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import androidx.compose.foundation.background
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -17,6 +18,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,10 +30,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Card
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -42,6 +46,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,8 +58,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.viewModels
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.fragment.findNavController
 import com.example.eyeprotect.PreferenceKeys
 import com.example.eyeprotect.R
@@ -64,6 +73,9 @@ import com.example.eyeprotect.monitoring.NightShiftProfiles
 import com.example.eyeprotect.ui.theme.EyeDesignTokens
 import com.example.eyeprotect.ui.theme.EyeprotectTheme
 import dagger.hilt.android.AndroidEntryPoint
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 private val NeutralDarkPageBackground = Color(0xFF111111)
 private val NeutralDarkCardTitleText = Color(0xFFFFFFFF)
@@ -72,6 +84,8 @@ private val NeutralAccentColor = Color(0xFFFF8C69)
 
 @AndroidEntryPoint
 class SettingsFragment : Fragment() {
+
+    private val viewModel: SettingsViewModel by viewModels()
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         return ComposeView(requireContext()).apply {
@@ -83,6 +97,7 @@ class SettingsFragment : Fragment() {
                         color = if (isDarkTheme) NeutralDarkPageBackground else MaterialTheme.colorScheme.background
                     ) {
                         SettingsScreen(
+                            viewModel = viewModel,
                             onOpenCalibration = {
                                 findNavController().navigate(R.id.calibrationFragment)
                             }
@@ -96,6 +111,7 @@ class SettingsFragment : Fragment() {
 
 @Composable
 private fun SettingsScreen(
+    viewModel: SettingsViewModel,
     onOpenCalibration: () -> Unit
 ) {
     val isDarkTheme = isSystemInDarkTheme()
@@ -111,6 +127,7 @@ private fun SettingsScreen(
 
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences(PreferenceKeys.PREFS_NAME, Context.MODE_PRIVATE) }
+    val monitoringRecordState by viewModel.monitoringRecords.collectAsState()
 
     var darkModeEnabled by remember {
         mutableStateOf(prefs.getBoolean(PreferenceKeys.PREF_DARK_MODE_ENABLED, false))
@@ -484,7 +501,134 @@ private fun SettingsScreen(
                 )
             }
         }
+
+        MonitoringRecordCard(
+            session = monitoringRecordState.latestCompletedSession,
+            cardContainerColor = cardContainerColor,
+            cardTitleTextColor = cardTitleTextColor,
+            cardBodyTextColor = cardBodyTextColor,
+            borderColor = colors.borderSubtle,
+        )
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MonitoringRecordCard(
+    session: MonitoringSummaryUi?,
+    cardContainerColor: Color,
+    cardTitleTextColor: Color,
+    cardBodyTextColor: Color,
+    borderColor: Color,
+) {
+    Card(
+        modifier = Modifier
+            .shadow(
+                elevation = 8.dp,
+                shape = RoundedCornerShape(20.dp),
+                ambientColor = Color(0xFF000000).copy(alpha = 0.06f),
+                spotColor = Color(0xFF000000).copy(alpha = 0.04f)
+            )
+            .fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(0.5.dp, borderColor),
+        colors = CardDefaults.cardColors(containerColor = cardContainerColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "監測摘要",
+                style = MaterialTheme.typography.titleMedium,
+                color = cardTitleTextColor
+            )
+            Text(
+                text = "這裡只顯示最近一次已完成的監測結果，統計從開啟監測到關閉監測之間的提醒次數與總時長。",
+                color = cardBodyTextColor,
+                style = MaterialTheme.typography.bodySmall
+            )
+
+            if (session == null) {
+                Text(
+                    text = "目前還沒有已完成的監測摘要。先到首頁打開監測，關閉後就會在這裡看到結果。",
+                    color = cardBodyTextColor,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            } else {
+                MonitoringSessionCard(
+                    session = session,
+                    titleColor = cardTitleTextColor,
+                    bodyColor = cardBodyTextColor,
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun MonitoringSessionCard(
+    session: MonitoringSummaryUi,
+    titleColor: Color,
+    bodyColor: Color,
+) {
+    val totalReminderCount =
+        session.tooCloseReminderCount + session.squintReminderCount + session.slouchReminderCount
+    val totalCorrectionCount =
+        session.tooCloseCorrectionCount + session.squintCorrectionCount + session.slouchCorrectionCount
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.35f),
+                shape = RoundedCornerShape(16.dp)
+            )
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text(
+            text = formatSessionStartedAt(session.startedAtEpochMs),
+            style = MaterialTheme.typography.titleSmall,
+            color = titleColor,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = "總監測時長 ${formatDuration(session.durationMs)}",
+            color = bodyColor,
+            style = MaterialTheme.typography.bodySmall
+        )
+        Text(
+            text = "總提醒 $totalReminderCount 次，提醒後立即改正 $totalCorrectionCount 次",
+            color = bodyColor,
+            style = MaterialTheme.typography.bodySmall
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            MonitoringMetricChip("瞇眼", session.squintReminderCount, session.squintCorrectionCount)
+            MonitoringMetricChip("駝背", session.slouchReminderCount, session.slouchCorrectionCount)
+            MonitoringMetricChip("距離過近", session.tooCloseReminderCount, session.tooCloseCorrectionCount)
+        }
+    }
+}
+
+@Composable
+private fun MonitoringMetricChip(
+    label: String,
+    reminderCount: Int,
+    correctedCount: Int,
+) {
+    AssistChip(
+        onClick = {},
+        enabled = false,
+        label = {
+            Text("$label：提醒 $reminderCount 次，立即改正 $correctedCount 次")
+        }
+    )
 }
 
 @Composable
@@ -542,5 +686,22 @@ private fun offsetDescription(offset: Float): String {
         offset > 0.08f -> "偏暖"
         offset < -0.08f -> "偏冷"
         else -> "接近預設"
+    }
+}
+
+private fun formatSessionStartedAt(epochMs: Long): String {
+    val formatter = SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())
+    return "開始時間 ${formatter.format(Date(epochMs))}"
+}
+
+private fun formatDuration(durationMs: Long): String {
+    val totalSeconds = (durationMs / 1000L).coerceAtLeast(0L)
+    val hours = totalSeconds / 3600L
+    val minutes = (totalSeconds % 3600L) / 60L
+    val seconds = totalSeconds % 60L
+    return when {
+        hours > 0L -> String.format(Locale.getDefault(), "%d 小時 %02d 分 %02d 秒", hours, minutes, seconds)
+        minutes > 0L -> String.format(Locale.getDefault(), "%d 分 %02d 秒", minutes, seconds)
+        else -> String.format(Locale.getDefault(), "%d 秒", seconds)
     }
 }

@@ -27,10 +27,12 @@ import javax.inject.Inject
 class MonitoringForegroundService : Service() {
 
     @Inject lateinit var repo: MonitoringRepository
+    @Inject lateinit var reportRepo: MonitoringReportRepository
     @Inject lateinit var faceDetector: FaceDetector
     @Inject lateinit var poseDetector: PoseDetector
 
     private var detectorManager: DetectorManager? = null
+    private var sessionStartedAtEpochMs: Long = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -56,6 +58,8 @@ class MonitoringForegroundService : Service() {
         detectorManager = null
         repo.setRunning(false)
         LiveMonitoringStore.publishPaused(this)
+        persistSessionDuration()
+        reportRepo.stopSession()
         super.onDestroy()
     }
 
@@ -64,6 +68,8 @@ class MonitoringForegroundService : Service() {
     private fun startMonitoringIfNeeded() {
         if (detectorManager != null) return
         repo.setRunning(true)
+        sessionStartedAtEpochMs = System.currentTimeMillis()
+        LiveMonitoringStore.resetSessionSummary(this, sessionStartedAtEpochMs)
 
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         if (!CalibrationPrefs.hasValidCalibration(prefs)) {
@@ -87,11 +93,19 @@ class MonitoringForegroundService : Service() {
             poseDetector = poseDetector,
             ruleDetector = ruleDetector
         ).also { manager ->
+            reportRepo.startSession()
             manager.start(
                 onMetrics = { metrics ->
                     repo.updateMetrics(metrics)
                     LiveMonitoringStore.publishMetrics(this, metrics)
-                }
+                    reportRepo.recordMetrics(metrics)
+                },
+                onWarningActivated = { warningState ->
+                    warningState.toMonitoringIssueType()?.let { issueType ->
+                        reportRepo.recordReminder(issueType)
+                    }
+                },
+                onWarningDeactivated = { }
             )
         }
     }
@@ -136,6 +150,14 @@ class MonitoringForegroundService : Service() {
         private const val NOTIFICATION_ID = 1101
 
         private const val PREFS_NAME = "eyeprotect_prefs"
+        const val PREF_LAST_SESSION_STARTED_AT = "last_session_started_at"
+        const val PREF_LAST_SESSION_DURATION_MS = "last_session_duration_ms"
+        const val PREF_LAST_TOO_CLOSE_COUNT = "last_too_close_count"
+        const val PREF_LAST_SQUINT_COUNT = "last_squint_count"
+        const val PREF_LAST_SLOUCH_COUNT = "last_slouch_count"
+        const val PREF_LAST_TOO_CLOSE_CORRECTION_COUNT = "last_too_close_correction_count"
+        const val PREF_LAST_SQUINT_CORRECTION_COUNT = "last_squint_correction_count"
+        const val PREF_LAST_SLOUCH_CORRECTION_COUNT = "last_slouch_correction_count"
         fun start(context: Context): Boolean {
             if (!context.hasRequiredMonitoringPermissions()) {
                 Log.w(TAG, "Monitoring start blocked: missing camera or notification permission")
@@ -172,5 +194,23 @@ class MonitoringForegroundService : Service() {
                     ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
             return hasCamera && hasNotifications
         }
+    }
+
+    private fun com.example.eyeprotect.WarningState.toMonitoringIssueType(): MonitoringIssueType? = when (this) {
+        com.example.eyeprotect.WarningState.TOO_CLOSE -> MonitoringIssueType.TOO_CLOSE
+        com.example.eyeprotect.WarningState.SQUINTING -> MonitoringIssueType.SQUINTING
+        com.example.eyeprotect.WarningState.SLOUCHING -> MonitoringIssueType.SLOUCHING
+        com.example.eyeprotect.WarningState.LYING -> MonitoringIssueType.LYING
+    }
+
+    private fun persistSessionDuration() {
+        if (sessionStartedAtEpochMs <= 0L) return
+        val durationMs = (System.currentTimeMillis() - sessionStartedAtEpochMs).coerceAtLeast(0L)
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putLong(PREF_LAST_SESSION_STARTED_AT, sessionStartedAtEpochMs)
+            .putLong(PREF_LAST_SESSION_DURATION_MS, durationMs)
+            .apply()
+        sessionStartedAtEpochMs = 0L
     }
 }

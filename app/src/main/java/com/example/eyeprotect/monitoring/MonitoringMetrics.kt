@@ -3,6 +3,7 @@ package com.example.eyeprotect.monitoring
 data class MonitoringMetrics(
     val ts: Long = 0L,
     val warningsMask: Int = 0,
+    val detectedWarningsMask: Int = 0,
     val isLyingActive: Boolean = false,
     val lastFaceDetectedTime: Long = 0L,
     val isCameraFrame: Boolean = false,

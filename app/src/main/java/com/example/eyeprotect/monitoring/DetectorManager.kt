@@ -64,6 +64,8 @@ class DetectorManager(
     private var isLyingActive = false
     private var squintWarningStreak = 0
     private var slouchWarningStreak = 0
+    private var lastDetectedWarnings: Set<WarningState> = emptySet()
+    private var lastPublishedWarnings: Set<WarningState> = emptySet()
 
     private var isRunning = false
 
@@ -105,13 +107,17 @@ class DetectorManager(
 
     fun start(
         onMetrics: (MonitoringMetrics) -> Unit,
-        onWarnings: (Set<WarningState>) -> Unit = {}
+        onWarnings: (Set<WarningState>) -> Unit = {},
+        onWarningActivated: (WarningState) -> Unit = {},
+        onWarningDeactivated: (WarningState) -> Unit = {}
     ) {
         if (isRunning) return
         isRunning = true
+        lastDetectedWarnings = emptySet()
+        lastPublishedWarnings = emptySet()
         lifecycleRegistry.currentState = Lifecycle.State.STARTED
         startSensors(onMetrics)
-        startCamera(onMetrics, onWarnings)
+        startCamera(onMetrics, onWarnings, onWarningActivated, onWarningDeactivated)
     }
 
     fun stop() {
@@ -120,6 +126,8 @@ class DetectorManager(
         stopCamera()
         stopSensors()
         cameraExecutor.shutdown()
+        lastDetectedWarnings = emptySet()
+        lastPublishedWarnings = emptySet()
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
     }
 
@@ -217,6 +225,7 @@ class DetectorManager(
             MonitoringMetrics(
                 ts = now,
                 warningsMask = lyingBit,
+                detectedWarningsMask = lyingBit,
                 isLyingActive = isLyingActive,
                 lastFaceDetectedTime = lastFaceSeenTimestamp,
                 isCameraFrame = false,
@@ -229,7 +238,9 @@ class DetectorManager(
 
     private fun startCamera(
         onMetrics: (MonitoringMetrics) -> Unit,
-        onWarnings: (Set<WarningState>) -> Unit
+        onWarnings: (Set<WarningState>) -> Unit,
+        onWarningActivated: (WarningState) -> Unit,
+        onWarningDeactivated: (WarningState) -> Unit
     ) {
         try {
             val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
@@ -237,7 +248,7 @@ class DetectorManager(
                 try {
                     val provider: ProcessCameraProvider = cameraProviderFuture.get()
                     cameraProvider = provider
-                    val analyzerImpl = FrameAnalyzer(onMetrics, onWarnings)
+                    val analyzerImpl = FrameAnalyzer(onMetrics, onWarnings, onWarningActivated, onWarningDeactivated)
                     val analyzer = ImageAnalysis.Builder()
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                         .build()
@@ -262,6 +273,7 @@ class DetectorManager(
             MonitoringMetrics(
                 ts = SystemClock.uptimeMillis(),
                 warningsMask = if (isLyingActive) 8 else 0,
+                detectedWarningsMask = if (isLyingActive) 8 else 0,
                 isLyingActive = isLyingActive,
                 lastFaceDetectedTime = lastFaceSeenTimestamp,
                 isCameraFrame = true,
@@ -293,7 +305,9 @@ class DetectorManager(
     private fun analyzeImage(
         imageProxy: ImageProxy,
         onMetrics: (MonitoringMetrics) -> Unit,
-        onWarnings: (Set<WarningState>) -> Unit
+        onWarnings: (Set<WarningState>) -> Unit,
+        onWarningActivated: (WarningState) -> Unit,
+        onWarningDeactivated: (WarningState) -> Unit
     ) {
         if (!isRunning) {
             imageProxy.close()
@@ -336,8 +350,16 @@ class DetectorManager(
                     imageHeight = imageHeight
                 )
 
+                val detectedWarningsWithLying = if (isLyingActive) warnings + WarningState.LYING else warnings
+                val activatedDetectedWarnings = detectedWarningsWithLying - lastDetectedWarnings
+                val deactivatedDetectedWarnings = lastDetectedWarnings - detectedWarningsWithLying
+                activatedDetectedWarnings.forEach(onWarningActivated)
+                deactivatedDetectedWarnings.forEach(onWarningDeactivated)
+                lastDetectedWarnings = detectedWarningsWithLying
+
                 val stableWarnings = stabilizeCameraWarnings(warnings)
                 val warningsWithLying = if (isLyingActive) stableWarnings + WarningState.LYING else stableWarnings
+                lastPublishedWarnings = warningsWithLying
                 onWarnings(warningsWithLying)
                 val irisNorm = face?.let { ruleDetector.computeNormalizedIrisDistance(it, imageWidth) }
                 val eyeOpenMin = face?.let { ruleDetector.computeEyeOpenMin(it) }
@@ -348,11 +370,17 @@ class DetectorManager(
                         (if (warningsWithLying.contains(WarningState.SQUINTING)) 2 else 0) or
                         (if (warningsWithLying.contains(WarningState.SLOUCHING)) 4 else 0) or
                         (if (warningsWithLying.contains(WarningState.LYING)) 8 else 0)
+                val detectedWarningsMask =
+                    (if (detectedWarningsWithLying.contains(WarningState.TOO_CLOSE)) 1 else 0) or
+                        (if (detectedWarningsWithLying.contains(WarningState.SQUINTING)) 2 else 0) or
+                        (if (detectedWarningsWithLying.contains(WarningState.SLOUCHING)) 4 else 0) or
+                        (if (detectedWarningsWithLying.contains(WarningState.LYING)) 8 else 0)
 
                 onMetrics(
                     MonitoringMetrics(
                         ts = SystemClock.uptimeMillis(),
                         warningsMask = warningsMask,
+                        detectedWarningsMask = detectedWarningsMask,
                         isLyingActive = isLyingActive,
                         lastFaceDetectedTime = lastFaceSeenTimestamp,
                         isCameraFrame = true,
@@ -391,11 +419,13 @@ class DetectorManager(
 
     private inner class FrameAnalyzer(
         private val onMetrics: (MonitoringMetrics) -> Unit,
-        private val onWarnings: (Set<WarningState>) -> Unit
+        private val onWarnings: (Set<WarningState>) -> Unit,
+        private val onWarningActivated: (WarningState) -> Unit,
+        private val onWarningDeactivated: (WarningState) -> Unit
     ) : ImageAnalysis.Analyzer {
         @ExperimentalGetImage
         override fun analyze(imageProxy: ImageProxy) {
-            analyzeImage(imageProxy, onMetrics, onWarnings)
+            analyzeImage(imageProxy, onMetrics, onWarnings, onWarningActivated, onWarningDeactivated)
         }
     }
 

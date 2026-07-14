@@ -13,9 +13,20 @@ object LiveMonitoringStore {
             incomingWarningsMask = metrics.warningsMask,
             isCameraFrame = metrics.isCameraFrame
         )
+        val detectedWarningsMask = mergeWarningsMask(
+            previousWarningsMask = prefs.getInt(PREF_LAST_DETECTED_WARNINGS_MASK, 0),
+            incomingWarningsMask = metrics.detectedWarningsMask,
+            isCameraFrame = metrics.isCameraFrame
+        )
+        updateSessionSummaryFromWarnings(
+            prefs = prefs,
+            detectedWarningsMask = detectedWarningsMask,
+            nowEpochMs = System.currentTimeMillis(),
+        )
         val editor = prefs.edit()
             .putLong(EyeHealthAccessibilityService.PREF_LIVE_TS, metrics.ts)
             .putInt(EyeHealthAccessibilityService.PREF_LIVE_WARNINGS_MASK, warningsMask)
+            .putInt(PREF_LAST_DETECTED_WARNINGS_MASK, detectedWarningsMask)
             .putBoolean(EyeHealthAccessibilityService.PREF_LIVE_IS_CAMERA_FRAME, metrics.isCameraFrame)
             .putLong(EyeHealthAccessibilityService.PREF_LIVE_FACE_SEEN_UPTIME_MS, metrics.lastFaceDetectedTime)
         if (metrics.isCameraFrame) {
@@ -56,20 +67,49 @@ object LiveMonitoringStore {
     }
 
     fun publishPaused(context: Context) {
-        val now = android.os.SystemClock.uptimeMillis()
-        publishMetrics(
-            context = context,
-            metrics = MonitoringMetrics(
-                ts = now,
-                warningsMask = 0,
-                isLyingActive = false,
-                lastFaceDetectedTime = 0L,
-                isCameraFrame = true,
-                irisNorm = Float.NaN,
-                eyeOpenMin = Float.NaN,
-                slouchScore = Float.NaN
-            )
-        )
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit()
+            .putLong(EyeHealthAccessibilityService.PREF_LIVE_TS, android.os.SystemClock.uptimeMillis())
+            .putInt(EyeHealthAccessibilityService.PREF_LIVE_WARNINGS_MASK, 0)
+            .putInt(PREF_LAST_DETECTED_WARNINGS_MASK, 0)
+            .putInt(PREF_SESSION_TRACKING_WARNINGS_MASK, 0)
+            .putBoolean(EyeHealthAccessibilityService.PREF_LIVE_IS_CAMERA_FRAME, true)
+            .putLong(EyeHealthAccessibilityService.PREF_LIVE_FACE_SEEN_UPTIME_MS, 0L)
+            .putFloat(EyeHealthAccessibilityService.PREF_LIVE_IRIS_NORM, Float.NaN)
+            .putFloat(EyeHealthAccessibilityService.PREF_LIVE_EYE_OPEN_MIN, Float.NaN)
+            .putFloat(EyeHealthAccessibilityService.PREF_LIVE_SLOUCH_SCORE, Float.NaN)
+            .apply()
+
+        val intent = Intent(EyeHealthAccessibilityService.ACTION_LIVE_METRICS).apply {
+            setPackage(context.packageName)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_TS, android.os.SystemClock.uptimeMillis())
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_WARNINGS_MASK, 0)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_IS_CAMERA_FRAME, true)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_FACE_SEEN_UPTIME_MS, 0L)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_IRIS_NORM, Float.NaN)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_EYE_OPEN_MIN, Float.NaN)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_SLOUCH_SCORE, Float.NaN)
+        }
+        context.sendBroadcast(intent)
+    }
+
+    fun resetSessionSummary(context: Context, startedAtEpochMs: Long) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putLong(MonitoringForegroundService.PREF_LAST_SESSION_STARTED_AT, startedAtEpochMs)
+            .putLong(MonitoringForegroundService.PREF_LAST_SESSION_DURATION_MS, 0L)
+            .putInt(MonitoringForegroundService.PREF_LAST_TOO_CLOSE_COUNT, 0)
+            .putInt(MonitoringForegroundService.PREF_LAST_SQUINT_COUNT, 0)
+            .putInt(MonitoringForegroundService.PREF_LAST_SLOUCH_COUNT, 0)
+            .putInt(MonitoringForegroundService.PREF_LAST_TOO_CLOSE_CORRECTION_COUNT, 0)
+            .putInt(MonitoringForegroundService.PREF_LAST_SQUINT_CORRECTION_COUNT, 0)
+            .putInt(MonitoringForegroundService.PREF_LAST_SLOUCH_CORRECTION_COUNT, 0)
+            .putInt(PREF_LAST_DETECTED_WARNINGS_MASK, 0)
+            .putInt(PREF_SESSION_TRACKING_WARNINGS_MASK, 0)
+            .putLong(PREF_TOO_CLOSE_REMINDER_AT, 0L)
+            .putLong(PREF_SQUINT_REMINDER_AT, 0L)
+            .putLong(PREF_SLOUCH_REMINDER_AT, 0L)
+            .apply()
     }
 
     fun mergeWarningsMask(
@@ -84,5 +124,83 @@ object LiveMonitoringStore {
         return (previousWarningsMask and 0x7) or (incomingWarningsMask and 0x8)
     }
 
+    private fun updateSessionSummaryFromWarnings(
+        prefs: android.content.SharedPreferences,
+        detectedWarningsMask: Int,
+        nowEpochMs: Long,
+    ) {
+        val previousMask = prefs.getInt(PREF_SESSION_TRACKING_WARNINGS_MASK, 0) and 0x7
+        val currentMask = detectedWarningsMask and 0x7
+        val editor = prefs.edit()
+
+        processWarningBit(
+            prefs = prefs,
+            editor = editor,
+            previousMask = previousMask,
+            currentMask = currentMask,
+            bit = MonitoringIssueType.TOO_CLOSE.mask,
+            reminderCountKey = MonitoringForegroundService.PREF_LAST_TOO_CLOSE_COUNT,
+            correctionCountKey = MonitoringForegroundService.PREF_LAST_TOO_CLOSE_CORRECTION_COUNT,
+            reminderAtKey = PREF_TOO_CLOSE_REMINDER_AT,
+            nowEpochMs = nowEpochMs,
+        )
+        processWarningBit(
+            prefs = prefs,
+            editor = editor,
+            previousMask = previousMask,
+            currentMask = currentMask,
+            bit = MonitoringIssueType.SQUINTING.mask,
+            reminderCountKey = MonitoringForegroundService.PREF_LAST_SQUINT_COUNT,
+            correctionCountKey = MonitoringForegroundService.PREF_LAST_SQUINT_CORRECTION_COUNT,
+            reminderAtKey = PREF_SQUINT_REMINDER_AT,
+            nowEpochMs = nowEpochMs,
+        )
+        processWarningBit(
+            prefs = prefs,
+            editor = editor,
+            previousMask = previousMask,
+            currentMask = currentMask,
+            bit = MonitoringIssueType.SLOUCHING.mask,
+            reminderCountKey = MonitoringForegroundService.PREF_LAST_SLOUCH_COUNT,
+            correctionCountKey = MonitoringForegroundService.PREF_LAST_SLOUCH_CORRECTION_COUNT,
+            reminderAtKey = PREF_SLOUCH_REMINDER_AT,
+            nowEpochMs = nowEpochMs,
+        )
+
+        editor.putInt(PREF_SESSION_TRACKING_WARNINGS_MASK, currentMask).apply()
+    }
+
+    private fun processWarningBit(
+        prefs: android.content.SharedPreferences,
+        editor: android.content.SharedPreferences.Editor,
+        previousMask: Int,
+        currentMask: Int,
+        bit: Int,
+        reminderCountKey: String,
+        correctionCountKey: String,
+        reminderAtKey: String,
+        nowEpochMs: Long,
+    ) {
+        val wasActive = previousMask and bit != 0
+        val isActive = currentMask and bit != 0
+        if (!wasActive && isActive) {
+            editor.putInt(reminderCountKey, prefs.getInt(reminderCountKey, 0) + 1)
+            editor.putLong(reminderAtKey, nowEpochMs)
+            return
+        }
+        if (wasActive && !isActive) {
+            val remindedAt = prefs.getLong(reminderAtKey, 0L)
+            if (remindedAt > 0L && nowEpochMs - remindedAt <= ImmediateCorrectionTracker.DEFAULT_CORRECTION_WINDOW_MS) {
+                editor.putInt(correctionCountKey, prefs.getInt(correctionCountKey, 0) + 1)
+            }
+            editor.putLong(reminderAtKey, 0L)
+        }
+    }
+
     private const val PREFS_NAME = "eyeprotect_prefs"
+    private const val PREF_LAST_DETECTED_WARNINGS_MASK = "last_detected_warnings_mask"
+    private const val PREF_SESSION_TRACKING_WARNINGS_MASK = "session_tracking_warnings_mask"
+    private const val PREF_TOO_CLOSE_REMINDER_AT = "too_close_reminder_at"
+    private const val PREF_SQUINT_REMINDER_AT = "squint_reminder_at"
+    private const val PREF_SLOUCH_REMINDER_AT = "slouch_reminder_at"
 }

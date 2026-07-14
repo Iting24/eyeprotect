@@ -6,12 +6,12 @@ import org.junit.Test
 class MainViewModelTest {
 
     @Test
-    fun `setMode updates current assist mode`() {
+    fun `toggleMode adds assist mode to selection`() {
         val viewModel = MainViewModel()
 
-        viewModel.setMode(AssistMode.BLUE)
+        viewModel.toggleMode(AssistMode.BLUE)
 
-        assertEquals(AssistMode.BLUE, viewModel.currentMode.value)
+        assertEquals(setOf(AssistMode.BLUE), viewModel.selectedModes.value)
     }
 
     @Test
