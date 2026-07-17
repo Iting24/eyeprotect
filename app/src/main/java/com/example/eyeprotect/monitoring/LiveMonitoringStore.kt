@@ -35,6 +35,8 @@ object LiveMonitoringStore {
                 .putFloat(EyeHealthAccessibilityService.PREF_LIVE_EYE_OPEN_MIN, metrics.eyeOpenMin ?: Float.NaN)
                 .putFloat(EyeHealthAccessibilityService.PREF_LIVE_SLOUCH_SCORE, metrics.slouchScore ?: Float.NaN)
                 .putBoolean(EyeHealthAccessibilityService.PREF_LIVE_FACE_DETECTED, metrics.faceDetected)
+                .putBoolean(EyeHealthAccessibilityService.PREF_LIVE_FACE_MATCHED, metrics.faceMatchedActiveProfile)
+                .putBoolean(EyeHealthAccessibilityService.PREF_LIVE_IDENTITY_PAUSED, metrics.identityPaused)
                 .putBoolean(EyeHealthAccessibilityService.PREF_LIVE_POSE_DETECTED, metrics.poseDetected)
                 .putBoolean(EyeHealthAccessibilityService.PREF_LIVE_FACE_ERROR, metrics.faceError)
                 .putBoolean(EyeHealthAccessibilityService.PREF_LIVE_POSE_ERROR, metrics.poseError)
@@ -55,6 +57,8 @@ object LiveMonitoringStore {
                 putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_EYE_OPEN_MIN, metrics.eyeOpenMin ?: Float.NaN)
                 putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_SLOUCH_SCORE, metrics.slouchScore ?: Float.NaN)
                 putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_FACE_DETECTED, metrics.faceDetected)
+                putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_FACE_MATCHED, metrics.faceMatchedActiveProfile)
+                putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_IDENTITY_PAUSED, metrics.identityPaused)
                 putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_POSE_DETECTED, metrics.poseDetected)
                 putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_FACE_ERROR, metrics.faceError)
                 putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_POSE_ERROR, metrics.poseError)
@@ -78,6 +82,8 @@ object LiveMonitoringStore {
             .putFloat(EyeHealthAccessibilityService.PREF_LIVE_IRIS_NORM, Float.NaN)
             .putFloat(EyeHealthAccessibilityService.PREF_LIVE_EYE_OPEN_MIN, Float.NaN)
             .putFloat(EyeHealthAccessibilityService.PREF_LIVE_SLOUCH_SCORE, Float.NaN)
+            .putBoolean(EyeHealthAccessibilityService.PREF_LIVE_FACE_MATCHED, false)
+            .putBoolean(EyeHealthAccessibilityService.PREF_LIVE_IDENTITY_PAUSED, false)
             .apply()
 
         val intent = Intent(EyeHealthAccessibilityService.ACTION_LIVE_METRICS).apply {
@@ -89,6 +95,8 @@ object LiveMonitoringStore {
             putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_IRIS_NORM, Float.NaN)
             putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_EYE_OPEN_MIN, Float.NaN)
             putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_SLOUCH_SCORE, Float.NaN)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_FACE_MATCHED, false)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_IDENTITY_PAUSED, false)
         }
         context.sendBroadcast(intent)
     }

@@ -67,9 +67,12 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.fragment.findNavController
 import com.example.eyeprotect.PreferenceKeys
 import com.example.eyeprotect.R
+import com.example.eyeprotect.FaceProfile
+import com.example.eyeprotect.FaceProfileStore
 import com.example.eyeprotect.monitoring.NightShiftMode
 import com.example.eyeprotect.monitoring.NightShiftOverlayService
 import com.example.eyeprotect.monitoring.NightShiftProfiles
+import com.example.eyeprotect.monitoring.MonitoringSummaryUi
 import com.example.eyeprotect.ui.theme.EyeDesignTokens
 import com.example.eyeprotect.ui.theme.EyeprotectTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -128,6 +131,11 @@ private fun SettingsScreen(
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences(PreferenceKeys.PREFS_NAME, Context.MODE_PRIVATE) }
     val monitoringRecordState by viewModel.monitoringRecords.collectAsState()
+    var faceProfiles by remember { mutableStateOf(FaceProfileStore.getProfiles(prefs)) }
+    var activeFaceProfileId by remember {
+        mutableStateOf(FaceProfileStore.getActiveProfile(prefs)?.id ?: faceProfiles.firstOrNull()?.id.orEmpty())
+    }
+    val activeFaceProfile = faceProfiles.firstOrNull { it.id == activeFaceProfileId }
 
     var darkModeEnabled by remember {
         mutableStateOf(prefs.getBoolean(PreferenceKeys.PREF_DARK_MODE_ENABLED, false))
@@ -230,6 +238,22 @@ private fun SettingsScreen(
                     color = cardBodyTextColor,
                     style = MaterialTheme.typography.bodySmall
                 )
+                Text(
+                    text = "可先切換要使用的人臉槽位，系統會記住不同人的校正結果。",
+                    color = cardBodyTextColor,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                FaceProfileSelector(
+                    profiles = faceProfiles,
+                    activeProfileId = activeFaceProfileId,
+                    onSelectProfile = { profile ->
+                        FaceProfileStore.setActiveProfile(prefs, profile.id)
+                        faceProfiles = FaceProfileStore.getProfiles(prefs)
+                        activeFaceProfileId = profile.id
+                    },
+                    titleColor = cardTitleTextColor,
+                    bodyColor = cardBodyTextColor
+                )
                 Button(
                     onClick = onOpenCalibration,
                     colors = ButtonDefaults.buttonColors(
@@ -237,7 +261,7 @@ private fun SettingsScreen(
                         contentColor = Color.White
                     )
                 ) {
-                    Text(stringResource(id = R.string.start_calibration), color = Color.White)
+                    Text("校正${activeFaceProfile?.label ?: "目前人臉"}", color = Color.White)
                 }
             }
         }
@@ -629,6 +653,49 @@ private fun MonitoringMetricChip(
             Text("$label：提醒 $reminderCount 次，立即改正 $correctedCount 次")
         }
     )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FaceProfileSelector(
+    profiles: List<FaceProfile>,
+    activeProfileId: String,
+    onSelectProfile: (FaceProfile) -> Unit,
+    titleColor: Color,
+    bodyColor: Color
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            text = "目前辨識對象",
+            style = MaterialTheme.typography.titleSmall,
+            color = titleColor
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            profiles.forEach { profile ->
+                FilterChip(
+                    selected = profile.id == activeProfileId,
+                    onClick = { onSelectProfile(profile) },
+                    label = {
+                        Text(
+                            text = if (profile.hasValidCalibration) {
+                                "${profile.label} 已校正"
+                            } else {
+                                "${profile.label} 未校正"
+                            }
+                        )
+                    }
+                )
+            }
+        }
+        Text(
+            text = "切換後，監測會只對目前選中的人臉恢復提醒；看到其他人時會自動暫停。",
+            color = bodyColor,
+            style = MaterialTheme.typography.bodySmall
+        )
+    }
 }
 
 @Composable

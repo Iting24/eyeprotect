@@ -169,6 +169,12 @@ fun DashboardScreen(
     var faceDetected by remember {
         mutableStateOf(prefs.getBoolean(EyeHealthAccessibilityService.PREF_LIVE_FACE_DETECTED, false))
     }
+    var faceMatchedActiveProfile by remember {
+        mutableStateOf(prefs.getBoolean(EyeHealthAccessibilityService.PREF_LIVE_FACE_MATCHED, false))
+    }
+    var identityPaused by remember {
+        mutableStateOf(prefs.getBoolean(EyeHealthAccessibilityService.PREF_LIVE_IDENTITY_PAUSED, false))
+    }
     var poseDetected by remember {
         mutableStateOf(prefs.getBoolean(EyeHealthAccessibilityService.PREF_LIVE_POSE_DETECTED, false))
     }
@@ -210,6 +216,10 @@ fun DashboardScreen(
                 warningsMask = incomingWarningsMask
                 lastWasCameraFrame = intent.getBooleanExtra(EyeHealthAccessibilityService.EXTRA_LIVE_IS_CAMERA_FRAME, lastWasCameraFrame)
                 faceDetected = intent.getBooleanExtra(EyeHealthAccessibilityService.EXTRA_LIVE_FACE_DETECTED, faceDetected)
+                faceMatchedActiveProfile =
+                    intent.getBooleanExtra(EyeHealthAccessibilityService.EXTRA_LIVE_FACE_MATCHED, faceMatchedActiveProfile)
+                identityPaused =
+                    intent.getBooleanExtra(EyeHealthAccessibilityService.EXTRA_LIVE_IDENTITY_PAUSED, identityPaused)
                 poseDetected = intent.getBooleanExtra(EyeHealthAccessibilityService.EXTRA_LIVE_POSE_DETECTED, poseDetected)
                 faceError = intent.getBooleanExtra(EyeHealthAccessibilityService.EXTRA_LIVE_FACE_ERROR, faceError)
                 poseError = intent.getBooleanExtra(EyeHealthAccessibilityService.EXTRA_LIVE_POSE_ERROR, poseError)
@@ -352,6 +362,8 @@ fun DashboardScreen(
             liveTs,
             faceSeenUptimeMs,
             faceDetected,
+            faceMatchedActiveProfile,
+            identityPaused,
             poseDetected,
             faceError,
             poseError,
@@ -365,6 +377,8 @@ fun DashboardScreen(
                 liveTsUptimeMs = liveTs,
                 faceSeenUptimeMs = faceSeenUptimeMs,
                 faceDetected = faceDetected,
+                faceMatchedActiveProfile = faceMatchedActiveProfile,
+                identityPaused = identityPaused,
                 poseDetected = poseDetected,
                 faceError = faceError,
                 poseError = poseError,
@@ -407,6 +421,7 @@ fun DashboardScreen(
                     alertsReady = alertsReady,
                     warningsMask = warningsMask,
                     faceDetected = faceDetected,
+                    identityPaused = identityPaused,
                     faceError = faceError,
                     poseError = poseError
                 )
@@ -510,6 +525,7 @@ fun DashboardScreen(
                             faceSeenUptimeMs = faceSeenUptimeMs,
                             lastWasCameraFrame = lastWasCameraFrame,
                             faceDetected = faceDetected,
+                            identityPaused = identityPaused,
                             poseDetected = poseDetected,
                             faceError = faceError,
                             poseError = poseError,
@@ -563,6 +579,8 @@ private fun buildDashboardHeroState(
     liveTsUptimeMs: Long,
     faceSeenUptimeMs: Long,
     faceDetected: Boolean,
+    faceMatchedActiveProfile: Boolean,
+    identityPaused: Boolean,
     poseDetected: Boolean,
     faceError: Boolean,
     poseError: Boolean,
@@ -582,6 +600,7 @@ private fun buildDashboardHeroState(
     val headline = when {
         !monitoringReady -> "先完成設定"
         !monitoringEnabled -> "監測已暫停"
+        identityPaused -> "偵測到其他人"
         faceError || poseError -> "偵測器回報錯誤"
         stale -> "資料可能中斷"
         !faceDetected -> "等待臉部入鏡"
@@ -592,10 +611,12 @@ private fun buildDashboardHeroState(
     val subtitle = when {
         !monitoringReady -> "相機權限與個人校正完成後，首頁才會開始顯示可靠數據。"
         !monitoringEnabled -> "開啟監測後，前景服務會開始收集即時資料。"
+        identityPaused -> "目前鏡頭前不是已選擇的人臉，提醒與監測已暫停，等本人回來會自動恢復。"
         faceError || poseError -> detectorErrorText(faceError, poseError)
         stale -> "最近沒有收到新數據，請檢查前景服務、相機或省電限制。"
         warningCount > 0 -> activeWarningText(warningsMask)
         !faceDetected -> "請讓臉部進入前鏡頭畫面，距離與睜眼指標才會更新。"
+        !faceMatchedActiveProfile -> "請切換到正確的人臉設定，或讓目前選中的使用者回到鏡頭前。"
         !poseDetected -> "臉部資料正常；姿勢指標需要肩膀或耳朵一起入鏡。"
         !alertsReady -> "數據仍會更新；開啟無障礙服務後，跨 app 提醒才會完整。"
         else -> "即時資料更新正常，暫時沒有警告。"
@@ -618,6 +639,7 @@ private fun MascotCoachCard(
     alertsReady: Boolean,
     warningsMask: Int,
     faceDetected: Boolean,
+    identityPaused: Boolean,
     faceError: Boolean,
     poseError: Boolean
 ) {
@@ -627,6 +649,7 @@ private fun MascotCoachCard(
         alertsReady,
         warningsMask,
         faceDetected,
+        identityPaused,
         faceError,
         poseError
     ) {
@@ -636,6 +659,7 @@ private fun MascotCoachCard(
             alertsReady = alertsReady,
             warningsMask = warningsMask,
             faceDetected = faceDetected,
+            identityPaused = identityPaused,
             faceError = faceError,
             poseError = poseError
         )
@@ -755,6 +779,7 @@ private fun buildMascotDialogue(
     alertsReady: Boolean,
     warningsMask: Int,
     faceDetected: Boolean,
+    identityPaused: Boolean,
     faceError: Boolean,
     poseError: Boolean
 ): MascotDialogue {
@@ -805,6 +830,21 @@ private fun buildMascotDialogue(
             accent = Color(0xFF8FA7FF),
             body = Color(0xFFDCE3FF),
             eyeOffsetX = 0f
+        )
+        identityPaused -> MascotDialogue(
+            mood = MascotMood.OFFLINE,
+            badge = "自動暫停",
+            headline = "我看到現在拿手機的人不是目前選中的那位，所以先安靜待命。",
+            tips = listOf(
+                "這時候我不會再跳提醒，避免打擾臨時借手機的人。",
+                "只要原本那位回到鏡頭前，我就會自動恢復監測，不用手動重開。",
+                "如果現在真的換人使用，可以去設定把人臉槽位切到對應的人。",
+                "你可以把它想成我先辨認值班對象，再決定要不要開始碎念。",
+                "等我再次看到正確的人臉，才會把距離、姿勢和瞇眼提醒接回來。"
+            ),
+            accent = Color(0xFF74C2A8),
+            body = Color(0xFFDDF5EA),
+            eyeOffsetX = -0.1f
         )
         warningCount > 0 -> MascotDialogue(
             mood = MascotMood.WARNING,
@@ -2008,6 +2048,7 @@ private fun ExpandableMonitoringStatusCard(
     faceSeenUptimeMs: Long,
     lastWasCameraFrame: Boolean,
     faceDetected: Boolean,
+    identityPaused: Boolean,
     poseDetected: Boolean,
     faceError: Boolean,
     poseError: Boolean,
@@ -2028,6 +2069,7 @@ private fun ExpandableMonitoringStatusCard(
     val stale = ageSec != null && ageSec >= 6
     val title = when {
         !monitoringEnabled -> "監測已暫停"
+        identityPaused -> "偵測到其他人，監測暫停中"
         faceError || poseError -> "偵測器錯誤"
         stale -> "資料未更新"
         !lastWasCameraFrame -> "感測器更新中"

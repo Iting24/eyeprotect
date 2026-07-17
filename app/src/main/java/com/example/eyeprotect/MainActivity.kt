@@ -3,7 +3,9 @@ package com.example.eyeprotect
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.content.res.Configuration
 import android.view.View
+import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -35,6 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -43,6 +46,7 @@ import androidx.compose.ui.zIndex
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.navigation.NavOptions
 import androidx.navigation.fragment.NavHostFragment
+import androidx.core.view.updateLayoutParams
 import com.example.eyeprotect.monitoring.NightShiftOverlayService
 import com.example.eyeprotect.ui.theme.EyeDesignTokens
 import com.example.eyeprotect.ui.theme.EyeprotectTheme
@@ -60,6 +64,7 @@ class MainActivity : AppCompatActivity() {
             supportFragmentManager.findFragmentById(R.id.nav_host_fragment) as NavHostFragment
         val navController = navHost.navController
         val bottomNav = findViewById<BottomNavigationView>(R.id.bottom_nav)
+        configureBottomNavSpacer(bottomNav)
         val navItems = bottomNavItems()
         bottomNav.visibility = View.INVISIBLE
 
@@ -125,6 +130,7 @@ class MainActivity : AppCompatActivity() {
 }
 
 private val BottomNavMaxWidth = 348.dp
+private val BottomNavLandscapeMaxWidth = 420.dp
 
 private data class BottomNavItem(
     val destinationId: Int,
@@ -139,19 +145,24 @@ private fun EyeProtectBottomNavigationBar(
     selectedDestinationId: Int,
     onNavigate: (BottomNavItem) -> Unit
 ) {
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val elevation = EyeDesignTokens.elevation
     val pillBackground = Color(0xFF1C1C1E)
     val navShape = RoundedCornerShape(40.dp)
+    val barHeight = if (isLandscape) 54.dp else 62.dp
+    val bottomPadding = if (isLandscape) 8.dp else 12.dp
+    val maxWidth = if (isLandscape) BottomNavLandscapeMaxWidth else BottomNavMaxWidth
 
     Box(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .zIndex(10f)
-                .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
-                .widthIn(max = BottomNavMaxWidth)
+                .padding(start = 16.dp, end = 16.dp, bottom = bottomPadding)
+                .widthIn(max = maxWidth)
                 .fillMaxWidth()
-                .height(62.dp)
+                .height(barHeight)
                 .shadow(
                     elevation = elevation.high + 2.dp,
                     shape = navShape,
@@ -188,8 +199,15 @@ private fun EyeProtectNavigationItem(
     selected: Boolean,
     onClick: () -> Unit
 ) {
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val animatedSize by animateDpAsState(
-        targetValue = if (selected) 46.dp else 42.dp,
+        targetValue = when {
+            isLandscape && selected -> 42.dp
+            isLandscape -> 38.dp
+            selected -> 46.dp
+            else -> 42.dp
+        },
         animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
         label = "navItemSize"
     )
@@ -208,7 +226,7 @@ private fun EyeProtectNavigationItem(
         if (selected) {
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(if (isLandscape) 36.dp else 40.dp)
                     .clip(CircleShape)
                     .background(Color.White),
                 contentAlignment = Alignment.Center
@@ -216,7 +234,7 @@ private fun EyeProtectNavigationItem(
                 Icon(
                     painter = painterResource(id = item.selectedIconRes),
                     contentDescription = stringResource(id = item.labelRes),
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(if (isLandscape) 18.dp else 20.dp),
                     tint = tint
                 )
             }
@@ -224,7 +242,7 @@ private fun EyeProtectNavigationItem(
             Icon(
                 painter = painterResource(id = item.iconRes),
                 contentDescription = stringResource(id = item.labelRes),
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(if (isLandscape) 18.dp else 20.dp),
                 tint = tint
             )
         }
@@ -265,4 +283,15 @@ private fun bottomNavItems(): List<BottomNavItem> {
             labelRes = R.string.nav_settings
         )
     )
+}
+
+private fun MainActivity.configureBottomNavSpacer(bottomNav: BottomNavigationView) {
+    val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val density = resources.displayMetrics.density
+    val spacerHeightPx = ((if (isLandscape) 64 else 86) * density).toInt()
+    val spacerBottomMarginPx = ((if (isLandscape) 8 else 12) * density).toInt()
+    bottomNav.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+        height = spacerHeightPx
+        bottomMargin = spacerBottomMarginPx
+    }
 }

@@ -15,6 +15,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.example.eyeprotect.CalibrationPrefs
+import com.example.eyeprotect.FaceProfileStore
 import com.example.eyeprotect.MainActivity
 import com.example.eyeprotect.PostureAndEyeDetector
 import com.example.eyeprotect.R
@@ -72,6 +73,7 @@ class MonitoringForegroundService : Service() {
         LiveMonitoringStore.resetSessionSummary(this, sessionStartedAtEpochMs)
 
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        FaceProfileStore.getProfiles(prefs)
         if (!CalibrationPrefs.hasValidCalibration(prefs)) {
             Log.w(TAG, "Monitoring start blocked: missing or invalid calibration")
             stopSelf()
@@ -91,6 +93,7 @@ class MonitoringForegroundService : Service() {
             context = this,
             faceDetector = faceDetector,
             poseDetector = poseDetector,
+            activeProfileProvider = { FaceProfileStore.getActiveProfile(prefs) },
             ruleDetector = ruleDetector
         ).also { manager ->
             reportRepo.startSession()
@@ -164,6 +167,7 @@ class MonitoringForegroundService : Service() {
                 return false
             }
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            FaceProfileStore.getProfiles(prefs)
             if (!CalibrationPrefs.hasValidCalibration(prefs)) {
                 Log.w(TAG, "Monitoring start blocked: missing or invalid calibration")
                 return false

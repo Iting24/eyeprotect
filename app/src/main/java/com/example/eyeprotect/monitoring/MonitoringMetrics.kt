@@ -8,6 +8,8 @@ data class MonitoringMetrics(
     val lastFaceDetectedTime: Long = 0L,
     val isCameraFrame: Boolean = false,
     val faceDetected: Boolean = false,
+    val faceMatchedActiveProfile: Boolean = false,
+    val identityPaused: Boolean = false,
     val poseDetected: Boolean = false,
     val faceError: Boolean = false,
     val poseError: Boolean = false,

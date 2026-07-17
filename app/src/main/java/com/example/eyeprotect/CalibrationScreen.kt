@@ -31,6 +31,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
@@ -45,6 +46,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -70,7 +72,16 @@ fun CalibrationScreen(
     onCalibrationComplete: () -> Unit
 ) {
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val prefs = remember(context) { context.getSharedPreferences(PreferenceKeys.PREFS_NAME, Context.MODE_PRIVATE) }
+    val activeProfile = remember(context) { FaceProfileStore.getActiveProfile(prefs) }
+    val isLandscape = configuration.screenWidthDp > configuration.screenHeightDp
+    val previewSize = if (isLandscape) {
+        (configuration.screenHeightDp * 0.46f).dp.coerceIn(160.dp, 220.dp)
+    } else {
+        260.dp
+    }
     var countdown by remember { mutableIntStateOf(3) }
     var isCalibrating by remember { mutableStateOf(false) }
     var calibrationError by remember { mutableStateOf<String?>(null) }
@@ -78,6 +89,7 @@ fun CalibrationScreen(
     val irisDistances = remember { mutableStateListOf<Float>() }
     val eyeOpenMins = remember { mutableStateListOf<Float>() }
     val slouchAngles = remember { mutableStateListOf<Double>() }
+    val faceSignatures = remember { mutableStateListOf<FaceSignature>() }
 
     val previewView = remember { PreviewView(context) }
     val metricDetector = remember { PostureAndEyeDetector() }
@@ -110,6 +122,7 @@ fun CalibrationScreen(
                             if (face != null) {
                                 metricDetector.computeNormalizedIrisDistance(face, imageWidth)?.let(irisDistances::add)
                                 metricDetector.computeEyeOpenMin(face)?.let(eyeOpenMins::add)
+                                FaceIdentityMatcher.createSignature(face)?.let(faceSignatures::add)
                             }
                             if (pose != null) {
                                 metricDetector.computePostureRatio(pose)?.let(slouchAngles::add)
@@ -139,6 +152,7 @@ fun CalibrationScreen(
         irisDistances.clear()
         eyeOpenMins.clear()
         slouchAngles.clear()
+        faceSignatures.clear()
 
         for (i in 3 downTo 1) {
             countdown = i
@@ -149,14 +163,16 @@ fun CalibrationScreen(
         val irisMedian = medianFloat(irisDistances)
         val eyeMedian = medianFloat(eyeOpenMins)
         val slouchMedian = medianDouble(slouchAngles)
+        val faceSignature = FaceIdentityMatcher.average(faceSignatures)
 
-        if (irisMedian == null || eyeMedian == null || slouchMedian == null) {
+        if (irisMedian == null || eyeMedian == null || slouchMedian == null || faceSignature == null) {
             calibrationError = buildString {
                 append("校正失敗：")
                 val missing = mutableListOf<String>()
                 if (irisMedian == null) missing.add("偵測不到眼睛距離")
                 if (eyeMedian == null) missing.add("偵測不到睜眼程度")
                 if (slouchMedian == null) missing.add("偵測不到肩膀/耳朵姿勢")
+                if (faceSignature == null) missing.add("偵測不到穩定的人臉特徵")
                 append(missing.joinToString("、"))
                 append("。請讓臉部與上半身(含肩膀)入鏡並保持不眨眼 3 秒後重試。")
             }
@@ -168,12 +184,13 @@ fun CalibrationScreen(
         val squintThreshold = CalibrationPrefs.sanitizeEyeOpenThreshold(eyeMedian * 0.7f)
         val slouchThreshold = CalibrationPrefs.sanitizeSlouchThreshold((slouchMedian * 0.75).toFloat())
 
-        val prefs = context.getSharedPreferences(PreferenceKeys.PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit()
-            .putFloat(CalibrationPrefs.KEY_IRIS_THRESHOLD, distanceThreshold)
-            .putFloat(CalibrationPrefs.KEY_EYE_OPEN_THRESHOLD, squintThreshold)
-            .putFloat(CalibrationPrefs.KEY_SLOUCH_THRESHOLD, slouchThreshold)
-            .apply()
+        FaceProfileStore.updateActiveProfileCalibration(
+            prefs = prefs,
+            irisThreshold = distanceThreshold,
+            eyeOpenThreshold = squintThreshold,
+            slouchThreshold = slouchThreshold,
+            signature = faceSignature
+        )
 
         val intent = Intent(EyeHealthAccessibilityService.ACTION_UPDATE_THRESHOLDS).apply {
             setPackage(context.packageName)
@@ -197,18 +214,25 @@ fun CalibrationScreen(
     ) {
         onBack?.let { BackToDashboardButton(onBack = it, modifier = Modifier.align(Alignment.Start)) }
         Text(
-            text = "個人基準校正",
+            text = "${activeProfile?.label ?: "目前人臉"}校正",
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onBackground,
             textAlign = TextAlign.Center,
             fontWeight = FontWeight.Bold
         )
 
+        Text(
+            text = "這次校正會更新目前選擇的 ${activeProfile?.label ?: "人臉設定"}，之後可在設定頁切換。",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+
         CalibrationWhyCard()
 
         Box(
             modifier = Modifier
-                .size(260.dp)
+                .sizeIn(minWidth = previewSize, minHeight = previewSize)
+                .size(previewSize)
                 .clip(CircleShape)
                 .border(
                     width = 3.dp,
