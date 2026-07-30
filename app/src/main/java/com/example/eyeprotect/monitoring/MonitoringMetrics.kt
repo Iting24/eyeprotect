@@ -12,11 +12,15 @@ data class MonitoringMetrics(
     val faceError: Boolean = false,
     val poseError: Boolean = false,
     val irisNorm: Float? = null,
+    val leftEyeOpen: Float? = null,
+    val rightEyeOpen: Float? = null,
     val eyeOpenMin: Float? = null,
     val slouchScore: Float? = null,
+    val facePitchDeg: Float? = null,
     val pitchDeg: Float? = null,
     val rollDeg: Float? = null,
-    val tiltDeg: Float? = null
+    val tiltDeg: Float? = null,
+    val squintHoldMs: Long? = null
 )
 
 data class MonitoringUiState(

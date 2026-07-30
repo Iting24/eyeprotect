@@ -156,12 +156,16 @@ fun DashboardScreen(
 
     var liveTs by remember { mutableLongStateOf(prefs.getLong(EyeHealthAccessibilityService.PREF_LIVE_TS, 0L)) }
     var irisNorm by remember { mutableFloatStateOf(prefs.getFloat(EyeHealthAccessibilityService.PREF_LIVE_IRIS_NORM, Float.NaN)) }
+    var leftEyeOpen by remember { mutableFloatStateOf(prefs.getFloat(EyeHealthAccessibilityService.PREF_LIVE_LEFT_EYE_OPEN, Float.NaN)) }
+    var rightEyeOpen by remember { mutableFloatStateOf(prefs.getFloat(EyeHealthAccessibilityService.PREF_LIVE_RIGHT_EYE_OPEN, Float.NaN)) }
     var eyeOpenMin by remember { mutableFloatStateOf(prefs.getFloat(EyeHealthAccessibilityService.PREF_LIVE_EYE_OPEN_MIN, Float.NaN)) }
     var slouchScore by remember { mutableFloatStateOf(prefs.getFloat(EyeHealthAccessibilityService.PREF_LIVE_SLOUCH_SCORE, Float.NaN)) }
+    var facePitchDeg by remember { mutableFloatStateOf(prefs.getFloat(EyeHealthAccessibilityService.PREF_LIVE_FACE_PITCH_DEG, Float.NaN)) }
     var faceSeenUptimeMs by remember { mutableLongStateOf(prefs.getLong(EyeHealthAccessibilityService.PREF_LIVE_FACE_SEEN_UPTIME_MS, 0L)) }
     var pitchDeg by remember { mutableFloatStateOf(prefs.getFloat(EyeHealthAccessibilityService.PREF_LIVE_PITCH_DEG, Float.NaN)) }
     var rollDeg by remember { mutableFloatStateOf(prefs.getFloat(EyeHealthAccessibilityService.PREF_LIVE_ROLL_DEG, Float.NaN)) }
     var tiltDeg by remember { mutableFloatStateOf(prefs.getFloat(EyeHealthAccessibilityService.PREF_LIVE_TILT_DEG, Float.NaN)) }
+    var squintHoldMs by remember { mutableLongStateOf(prefs.getLong(EyeHealthAccessibilityService.PREF_LIVE_SQUINT_HOLD_MS, 0L)) }
     var warningsMask by remember { mutableIntStateOf(prefs.getInt(EyeHealthAccessibilityService.PREF_LIVE_WARNINGS_MASK, 0)) }
     var lastWasCameraFrame by remember {
         mutableStateOf(prefs.getBoolean(EyeHealthAccessibilityService.PREF_LIVE_IS_CAMERA_FRAME, false))
@@ -216,11 +220,20 @@ fun DashboardScreen(
                 if (intent.hasExtra(EyeHealthAccessibilityService.EXTRA_LIVE_IRIS_NORM)) {
                     irisNorm = intent.getFloatExtra(EyeHealthAccessibilityService.EXTRA_LIVE_IRIS_NORM, irisNorm)
                 }
+                if (intent.hasExtra(EyeHealthAccessibilityService.EXTRA_LIVE_LEFT_EYE_OPEN)) {
+                    leftEyeOpen = intent.getFloatExtra(EyeHealthAccessibilityService.EXTRA_LIVE_LEFT_EYE_OPEN, leftEyeOpen)
+                }
+                if (intent.hasExtra(EyeHealthAccessibilityService.EXTRA_LIVE_RIGHT_EYE_OPEN)) {
+                    rightEyeOpen = intent.getFloatExtra(EyeHealthAccessibilityService.EXTRA_LIVE_RIGHT_EYE_OPEN, rightEyeOpen)
+                }
                 if (intent.hasExtra(EyeHealthAccessibilityService.EXTRA_LIVE_EYE_OPEN_MIN)) {
                     eyeOpenMin = intent.getFloatExtra(EyeHealthAccessibilityService.EXTRA_LIVE_EYE_OPEN_MIN, eyeOpenMin)
                 }
                 if (intent.hasExtra(EyeHealthAccessibilityService.EXTRA_LIVE_SLOUCH_SCORE)) {
                     slouchScore = intent.getFloatExtra(EyeHealthAccessibilityService.EXTRA_LIVE_SLOUCH_SCORE, slouchScore)
+                }
+                if (intent.hasExtra(EyeHealthAccessibilityService.EXTRA_LIVE_FACE_PITCH_DEG)) {
+                    facePitchDeg = intent.getFloatExtra(EyeHealthAccessibilityService.EXTRA_LIVE_FACE_PITCH_DEG, facePitchDeg)
                 }
                 if (intent.hasExtra(EyeHealthAccessibilityService.EXTRA_LIVE_PITCH_DEG)) {
                     pitchDeg = intent.getFloatExtra(EyeHealthAccessibilityService.EXTRA_LIVE_PITCH_DEG, pitchDeg)
@@ -230,6 +243,9 @@ fun DashboardScreen(
                 }
                 if (intent.hasExtra(EyeHealthAccessibilityService.EXTRA_LIVE_TILT_DEG)) {
                     tiltDeg = intent.getFloatExtra(EyeHealthAccessibilityService.EXTRA_LIVE_TILT_DEG, tiltDeg)
+                }
+                if (intent.hasExtra(EyeHealthAccessibilityService.EXTRA_LIVE_SQUINT_HOLD_MS)) {
+                    squintHoldMs = intent.getLongExtra(EyeHealthAccessibilityService.EXTRA_LIVE_SQUINT_HOLD_MS, squintHoldMs)
                 }
                 if (intent.hasExtra(EyeHealthAccessibilityService.EXTRA_LIVE_FACE_SEEN_UPTIME_MS)) {
                     faceSeenUptimeMs =
@@ -466,11 +482,15 @@ fun DashboardScreen(
                 ) {
                     MetricOverviewCard(
                         irisNorm = irisNorm,
+                        leftEyeOpen = leftEyeOpen,
+                        rightEyeOpen = rightEyeOpen,
                         eyeOpenMin = eyeOpenMin,
                         postureRatio = slouchScore,
                         tiltDeg = tiltDeg,
+                        facePitchDeg = facePitchDeg,
                         pitchDeg = pitchDeg,
                         rollDeg = rollDeg,
+                        squintHoldMs = squintHoldMs,
                         warningsMask = warningsMask,
                         irisThreshold = irisThreshold,
                         eyeOpenThreshold = eyeOpenThreshold,
@@ -1677,11 +1697,15 @@ private fun SetupSummaryLabels() {
 @Composable
 private fun MetricOverviewCard(
     irisNorm: Float,
+    leftEyeOpen: Float,
+    rightEyeOpen: Float,
     eyeOpenMin: Float,
     postureRatio: Float,
     tiltDeg: Float,
+    facePitchDeg: Float,
     pitchDeg: Float,
     rollDeg: Float,
+    squintHoldMs: Long,
     warningsMask: Int,
     irisThreshold: Float,
     eyeOpenThreshold: Float,
@@ -1759,7 +1783,7 @@ private fun MetricOverviewCard(
                 MetricDetail(
                     unit = "越低越接近瞇眼",
                     progress = eyePct,
-                    hint = if (eyeOpenThreshold.isNaN()) "尚未建立睜眼基準" else "門檻 ${formatPercent(probabilityPercent(eyeOpenThreshold))}，低於門檻時會被視為疲勞或瞇眼風險。",
+                    hint = eyeOpenHint(leftEyeOpen, rightEyeOpen, eyeOpenThreshold, facePitchDeg, pitchDeg, squintHoldMs),
                     warning = squinting,
                     accent = Color(0xFFA6D8FF),
                     trend = eyeTrend
@@ -1815,6 +1839,7 @@ private fun SummaryMetricRow(
     title: String,
     value: String,
     status: String,
+    secondaryStatus: String? = null,
     warning: Boolean,
     accent: Color,
     expanded: Boolean,
@@ -1872,6 +1897,15 @@ private fun SummaryMetricRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                secondaryStatus?.let {
+                    Text(
+                        text = it,
+                        style = EyeDesignTokens.typography.bodySmall,
+                        color = cardBodyTextColor(),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
             MetricValueText(
                 value = value,
@@ -2639,11 +2673,15 @@ private fun SetupStepRow(index: Int, label: String, done: Boolean, isCurrent: Bo
 @Composable
 private fun MetricGrid(
     irisNorm: Float,
+    leftEyeOpen: Float,
+    rightEyeOpen: Float,
     eyeOpenMin: Float,
     postureRatio: Float,
     tiltDeg: Float,
+    facePitchDeg: Float,
     pitchDeg: Float,
     rollDeg: Float,
+    squintHoldMs: Long,
     warningsMask: Int,
     irisThreshold: Float,
     eyeOpenThreshold: Float,
@@ -2688,7 +2726,7 @@ private fun MetricGrid(
                 unit = "越低越咪眼",
                 status = eyeOpenStatus(eyePct, squinting),
                 progress = eyePct,
-                hint = if (eyeOpenThreshold.isNaN()) null else "門檻 ${formatPercent(probabilityPercent(eyeOpenThreshold))}",
+                hint = eyeOpenHint(leftEyeOpen, rightEyeOpen, eyeOpenThreshold, facePitchDeg, pitchDeg, squintHoldMs),
                 warning = squinting,
                 accent = Color(0xFF6EE7FF),
                 trend = eyeTrend
@@ -3018,6 +3056,41 @@ private fun formatAngleHint(pitchDeg: Float, rollDeg: Float, tiltDeg: Float): St
 }
 
 private fun formatDeg(value: Float): String = value.toInt().toString()
+
+private fun eyeOpenHint(
+    leftEyeOpen: Float,
+    rightEyeOpen: Float,
+    eyeOpenThreshold: Float,
+    facePitchDeg: Float,
+    sensorPitchDeg: Float,
+    squintHoldMs: Long
+): String {
+    val left = formatPercent(probabilityPercent(leftEyeOpen))
+    val right = formatPercent(probabilityPercent(rightEyeOpen))
+    val eyeText = if (eyeOpenThreshold.isNaN()) {
+        "L $left / R $right"
+    } else {
+        "L $left / R $right，門檻 ${formatPercent(probabilityPercent(eyeOpenThreshold))}"
+    }
+    return listOf(eyeText, formatSquintAngleDebug(facePitchDeg, sensorPitchDeg), formatHoldText(squintHoldMs)).joinToString(" / ")
+}
+
+private fun eyeOpenDebugLabel(leftEyeOpen: Float, rightEyeOpen: Float, squintHoldMs: Long): String {
+    val left = formatPercent(probabilityPercent(leftEyeOpen))
+    val right = formatPercent(probabilityPercent(rightEyeOpen))
+    return "L $left / R $right / ${formatHoldText(squintHoldMs)}"
+}
+
+private fun formatSquintAngleDebug(facePitchDeg: Float, sensorPitchDeg: Float): String {
+    val face = if (facePitchDeg.isNaN()) "--" else "${formatDeg(facePitchDeg)}°"
+    val sensor = if (sensorPitchDeg.isNaN()) "--" else "${formatDeg(sensorPitchDeg)}°"
+    return "face $face / sensor $sensor"
+}
+
+private fun formatHoldText(squintHoldMs: Long): String {
+    if (squintHoldMs <= 0L) return "hold --"
+    return "hold ${squintHoldMs / 1000}s"
+}
 
 private fun probabilityPercent(probability: Float): Int? {
     if (probability.isNaN()) return null

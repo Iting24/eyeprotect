@@ -1,10 +1,11 @@
 package com.example.eyeprotect
 
+import android.graphics.PointF
 import com.google.mlkit.vision.face.Face
+import com.google.mlkit.vision.face.FaceContour
 import com.google.mlkit.vision.pose.Pose
 import com.google.mlkit.vision.pose.PoseLandmark
 import kotlin.math.abs
-import kotlin.math.atan2
 import kotlin.math.pow
 import kotlin.math.sqrt
 
@@ -46,6 +47,57 @@ class PostureAndEyeDetector {
             rightOpen != null -> rightOpen
             else -> null
         }
+    }
+
+    fun computeEyeBrowGapRatio(face: Face): Float? {
+        val leftEyeCenter = contourCenter(face, FaceContour.LEFT_EYE)
+        val rightEyeCenter = contourCenter(face, FaceContour.RIGHT_EYE)
+        val leftBrowCenter = contourCenter(face, FaceContour.LEFT_EYEBROW_TOP)
+        val rightBrowCenter = contourCenter(face, FaceContour.RIGHT_EYEBROW_TOP)
+        val faceHeight = face.boundingBox.height().toFloat()
+        if (leftEyeCenter == null || rightEyeCenter == null || leftBrowCenter == null || rightBrowCenter == null || faceHeight <= 0f) {
+            return null
+        }
+
+        val leftGap = abs(leftEyeCenter.y - leftBrowCenter.y)
+        val rightGap = abs(rightEyeCenter.y - rightBrowCenter.y)
+        return ((leftGap + rightGap) / 2f) / faceHeight
+    }
+
+    fun isSquinting(leftEyeOpenProbability: Float?, rightEyeOpenProbability: Float?): Boolean {
+        return areBothEyesBelowThreshold(leftEyeOpenProbability, rightEyeOpenProbability, eyeOpenThreshold)
+    }
+
+    fun areBothEyesBelowThreshold(
+        leftEyeOpenProbability: Float?,
+        rightEyeOpenProbability: Float?,
+        threshold: Float
+    ): Boolean {
+        val leftOpen = leftEyeOpenProbability ?: return false
+        val rightOpen = rightEyeOpenProbability ?: return false
+        return leftOpen < threshold && rightOpen < threshold
+    }
+
+    fun areBothEyesAboveThreshold(
+        leftEyeOpenProbability: Float?,
+        rightEyeOpenProbability: Float?,
+        threshold: Float
+    ): Boolean {
+        val leftOpen = leftEyeOpenProbability ?: return false
+        val rightOpen = rightEyeOpenProbability ?: return false
+        return leftOpen > threshold && rightOpen > threshold
+    }
+
+    private fun contourCenter(face: Face, contourType: Int): PointF? {
+        val points = face.getContour(contourType)?.points ?: return null
+        if (points.isEmpty()) return null
+        var sumX = 0f
+        var sumY = 0f
+        points.forEach { point ->
+            sumX += point.x
+            sumY += point.y
+        }
+        return PointF(sumX / points.size, sumY / points.size)
     }
 
     fun computePostureRatio(pose: Pose): Double? {
@@ -90,11 +142,8 @@ class PostureAndEyeDetector {
             }
 
             // 2. 偵測瞇眼 (使用 ML Kit 分類結果)
-            if (enableSquintWarning) {
-                val eyeOpenMin = computeEyeOpenMin(it)
-                if (eyeOpenMin != null && eyeOpenMin < eyeOpenThreshold) {
-                    warnings.add(WarningState.SQUINTING)
-                }
+            if (enableSquintWarning && isSquinting(it.leftEyeOpenProbability, it.rightEyeOpenProbability)) {
+                warnings.add(WarningState.SQUINTING)
             }
         }
 
