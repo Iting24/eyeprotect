@@ -9,12 +9,18 @@ import android.hardware.SensorManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -55,11 +61,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
@@ -503,7 +511,7 @@ private fun SettingsScreen(
         }
 
         MonitoringRecordCard(
-            session = monitoringRecordState.latestCompletedSession,
+            recordState = monitoringRecordState,
             cardContainerColor = cardContainerColor,
             cardTitleTextColor = cardTitleTextColor,
             cardBodyTextColor = cardBodyTextColor,
@@ -515,12 +523,19 @@ private fun SettingsScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MonitoringRecordCard(
-    session: MonitoringSummaryUi?,
+    recordState: MonitoringRecordUiState,
     cardContainerColor: Color,
     cardTitleTextColor: Color,
     cardBodyTextColor: Color,
     borderColor: Color,
 ) {
+    var detailsExpanded by remember { mutableStateOf(false) }
+    val session = recordState.todaySessions.firstOrNull()
+    val arrowRotation by animateFloatAsState(
+        targetValue = if (detailsExpanded) 90f else 0f,
+        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+        label = "monitoring_report_arrow"
+    )
     Card(
         modifier = Modifier
             .shadow(
@@ -557,11 +572,60 @@ private fun MonitoringRecordCard(
                     style = MaterialTheme.typography.bodyMedium
                 )
             } else {
-                MonitoringSessionCard(
-                    session = session,
-                    titleColor = cardTitleTextColor,
-                    bodyColor = cardBodyTextColor,
-                )
+                recordState.todaySummary?.let {
+                    MonitoringDailySummaryCard(
+                        summary = it,
+                        titleColor = cardTitleTextColor,
+                        bodyColor = cardBodyTextColor,
+                    )
+                }
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .animateContentSize(animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing))
+                        .background(
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.25f),
+                            shape = RoundedCornerShape(16.dp)
+                        )
+                        .clickable { detailsExpanded = !detailsExpanded }
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "今日各次監測紀錄",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = cardTitleTextColor,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "›",
+                            modifier = Modifier.graphicsLayer { rotationZ = arrowRotation },
+                            fontSize = 28.sp,
+                            color = cardBodyTextColor
+                        )
+                    }
+                    Text(
+                        text = "共 ${recordState.todaySessions.size} 筆，點擊展開查看每次從開到關的紀錄。",
+                        color = cardBodyTextColor,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    AnimatedVisibility(visible = detailsExpanded) {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            recordState.todaySessions.forEach { item ->
+                                MonitoringSessionCard(
+                                    session = item,
+                                    titleColor = cardTitleTextColor,
+                                    bodyColor = cardBodyTextColor,
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -612,6 +676,55 @@ private fun MonitoringSessionCard(
             MonitoringMetricChip("瞇眼", session.squintReminderCount, session.squintCorrectionCount)
             MonitoringMetricChip("駝背", session.slouchReminderCount, session.slouchCorrectionCount)
             MonitoringMetricChip("距離過近", session.tooCloseReminderCount, session.tooCloseCorrectionCount)
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun MonitoringDailySummaryCard(
+    summary: MonitoringDailySummaryUi,
+    titleColor: Color,
+    bodyColor: Color,
+) {
+    val totalReminderCount =
+        summary.tooCloseReminderCount + summary.squintReminderCount + summary.slouchReminderCount
+    val totalCorrectionCount =
+        summary.tooCloseCorrectionCount + summary.squintCorrectionCount + summary.slouchCorrectionCount
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.35f),
+                shape = RoundedCornerShape(16.dp)
+            )
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text(
+            text = "${summary.dateLabel} 今日總表",
+            style = MaterialTheme.typography.titleSmall,
+            color = titleColor,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = "今日監測總時數：${formatDuration(summary.totalDurationMs)}",
+            color = bodyColor,
+            style = MaterialTheme.typography.bodySmall
+        )
+        Text(
+            text = "今日總提醒 $totalReminderCount 次，立即改善 $totalCorrectionCount 次",
+            color = bodyColor,
+            style = MaterialTheme.typography.bodySmall
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            MonitoringMetricChip("瞇眼", summary.squintReminderCount, summary.squintCorrectionCount)
+            MonitoringMetricChip("駝背", summary.slouchReminderCount, summary.slouchCorrectionCount)
+            MonitoringMetricChip("過近", summary.tooCloseReminderCount, summary.tooCloseCorrectionCount)
         }
     }
 }
