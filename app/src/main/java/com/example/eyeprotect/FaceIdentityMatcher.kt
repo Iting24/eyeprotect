@@ -112,7 +112,7 @@ object FaceIdentityMatcher {
     )
 
     private const val MIN_EYE_DISTANCE_PX = 24f
-    private const val MIN_VECTOR_SIZE = 8
-    private const val VECTOR_DISTANCE_THRESHOLD = 0.18
-    private const val BOX_RATIO_THRESHOLD = 0.32f
+    private const val MIN_VECTOR_SIZE = 10
+    private const val VECTOR_DISTANCE_THRESHOLD = 0.14
+    private const val BOX_RATIO_THRESHOLD = 0.22f
 }

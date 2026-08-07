@@ -1,12 +1,14 @@
 package com.example.eyeprotect.monitoring
 
 import android.content.Context
+import android.content.res.Configuration
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.SystemClock
 import android.util.Log
+import android.view.OrientationEventListener
 import android.view.Surface
 import android.view.WindowManager
 import androidx.camera.core.CameraSelector
@@ -55,11 +57,14 @@ class DetectorManager(
     private var rotationVectorSensor: Sensor? = null
     private var gyroSensor: Sensor? = null
     private var gravitySensor: Sensor? = null
+    private var orientationListener: OrientationEventListener? = null
 
     private var lastDetectionTimestamp = 0L
     private var lastSensorPublishTimestamp = 0L
     private var lastFaceSeenTimestamp = 0L
+    private var lastOwnerMatchTimestamp = 0L
     private var lastGyroMagnitude = 0.0
+    private var currentTargetRotation = fallbackRotationFromConfiguration()
 
     private var lastPitchDegrees = Double.NaN
     private var lastRollDegrees = Double.NaN
@@ -123,6 +128,7 @@ class DetectorManager(
         lastDetectedWarnings = emptySet()
         lastPublishedWarnings = emptySet()
         lifecycleRegistry.currentState = Lifecycle.State.STARTED
+        startOrientationTracking()
         startSensors(onMetrics)
         startCamera(onMetrics, onWarnings, onWarningActivated, onWarningDeactivated)
     }
@@ -132,6 +138,7 @@ class DetectorManager(
         isRunning = false
         stopCamera()
         stopSensors()
+        stopOrientationTracking()
         cameraExecutor.shutdown()
         lastDetectedWarnings = emptySet()
         lastPublishedWarnings = emptySet()
@@ -160,6 +167,30 @@ class DetectorManager(
 
         // Publish periodically even before camera produces frames.
         publishSensorMetricsIfNeeded(onMetrics)
+    }
+
+    private fun startOrientationTracking() {
+        if (orientationListener != null) return
+        orientationListener = object : OrientationEventListener(context.applicationContext) {
+            override fun onOrientationChanged(orientation: Int) {
+                if (orientation == ORIENTATION_UNKNOWN) return
+                val updatedRotation = orientationToSurfaceRotation(orientation)
+                if (currentTargetRotation == updatedRotation) return
+                currentTargetRotation = updatedRotation
+                imageAnalyzer?.targetRotation = updatedRotation
+            }
+        }.also { listener ->
+            if (listener.canDetectOrientation()) {
+                listener.enable()
+            } else {
+                currentTargetRotation = currentDisplayRotation()
+            }
+        }
+    }
+
+    private fun stopOrientationTracking() {
+        orientationListener?.disable()
+        orientationListener = null
     }
 
     private fun stopSensors() {
@@ -282,7 +313,7 @@ class DetectorManager(
                     val analyzerImpl = FrameAnalyzer(onMetrics, onWarnings, onWarningActivated, onWarningDeactivated)
                     val analyzer = ImageAnalysis.Builder()
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                        .setTargetRotation(currentDisplayRotation())
+                        .setTargetRotation(currentTargetRotation)
                         .build()
                         .also { it.setAnalyzer(cameraExecutor, analyzerImpl) }
                     imageAnalyzer = analyzer
@@ -347,7 +378,7 @@ class DetectorManager(
             imageProxy.close()
             return
         }
-        val currentRotation = currentDisplayRotation()
+        val currentRotation = currentTargetRotation
         if (imageAnalyzer?.targetRotation != currentRotation) {
             imageAnalyzer?.targetRotation = currentRotation
         }
@@ -381,18 +412,32 @@ class DetectorManager(
                 val activeProfile = activeProfileProvider()
                 val face = if (faceTask.isSuccessful) faceTask.result?.firstOrNull() else null
                 val pose = if (poseTask.isSuccessful) poseTask.result else null
-                var faceMatchesActiveProfile = false
-                if (face != null) {
-                    faceMatchesActiveProfile = activeProfile?.signature?.let { signature ->
-                        FaceIdentityMatcher.isMatch(face, signature)
-                    } ?: true
-                    if (faceMatchesActiveProfile) {
-                        isIdentityPaused = false
-                        lastFaceSeenTimestamp = SystemClock.uptimeMillis()
-                    } else {
-                        isIdentityPaused = true
-                        lastFaceSeenTimestamp = 0L
+                val analysisTimestamp = SystemClock.uptimeMillis()
+                val requiresIdentityMatch = activeProfile?.signature != null
+                val faceMatchesActiveProfile = when {
+                    !requiresIdentityMatch -> face != null
+                    face == null -> false
+                    else -> FaceIdentityMatcher.isMatch(face, activeProfile.signature!!)
+                }
+
+                if (!requiresIdentityMatch) {
+                    isIdentityPaused = false
+                    if (face != null) {
+                        lastFaceSeenTimestamp = analysisTimestamp
+                        lastOwnerMatchTimestamp = analysisTimestamp
                     }
+                } else if (faceMatchesActiveProfile) {
+                    isIdentityPaused = false
+                    lastFaceSeenTimestamp = analysisTimestamp
+                    lastOwnerMatchTimestamp = analysisTimestamp
+                } else if (face != null) {
+                    // A different face is in front of the camera: pause immediately.
+                    isIdentityPaused = true
+                    lastFaceSeenTimestamp = 0L
+                } else if (analysisTimestamp - lastOwnerMatchTimestamp > OWNER_MATCH_GRACE_MS) {
+                    // If we can no longer verify the owner for a short period, stop reminders.
+                    isIdentityPaused = true
+                    lastFaceSeenTimestamp = 0L
                 }
 
                 val warnings = if (isIdentityPaused) {
@@ -503,6 +548,7 @@ class DetectorManager(
         private const val LYING_MIN_GYRO_MAG = 0.03
         private const val LYING_MAX_GYRO_MAG = 3.0
         private const val LYING_FACE_RECENCY_MS = 5000L
+        private const val OWNER_MATCH_GRACE_MS = 1500L
     }
 
     private fun syncActiveProfile() {
@@ -540,6 +586,23 @@ class DetectorManager(
         @Suppress("DEPRECATION")
         val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
         @Suppress("DEPRECATION")
-        return windowManager?.defaultDisplay?.rotation ?: Surface.ROTATION_0
+        return windowManager?.defaultDisplay?.rotation ?: fallbackRotationFromConfiguration()
+    }
+
+    private fun fallbackRotationFromConfiguration(): Int {
+        return when (context.resources.configuration.orientation) {
+            Configuration.ORIENTATION_LANDSCAPE -> Surface.ROTATION_90
+            Configuration.ORIENTATION_PORTRAIT -> Surface.ROTATION_0
+            else -> Surface.ROTATION_0
+        }
+    }
+
+    private fun orientationToSurfaceRotation(orientation: Int): Int {
+        return when {
+            orientation in 45..134 -> Surface.ROTATION_270
+            orientation in 135..224 -> Surface.ROTATION_180
+            orientation in 225..314 -> Surface.ROTATION_90
+            else -> Surface.ROTATION_0
+        }
     }
 }
