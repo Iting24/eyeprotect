@@ -22,6 +22,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import com.example.eyeprotect.FaceIdentityMatcher
 import com.example.eyeprotect.FaceProfile
+import com.example.eyeprotect.FaceSignature
 import com.example.eyeprotect.PostureAndEyeDetector
 import com.example.eyeprotect.WarningState
 import com.google.android.gms.tasks.Tasks
@@ -64,6 +65,8 @@ class DetectorManager(
     private var lastFaceSeenTimestamp = 0L
     private var lastOwnerMatchTimestamp = 0L
     private var lastGyroMagnitude = 0.0
+    private var sessionOwnerSignature: FaceSignature? = null
+    private var ownerMatchStreak = 0
     private var currentTargetRotation = fallbackRotationFromConfiguration()
 
     private var lastPitchDegrees = Double.NaN
@@ -127,6 +130,8 @@ class DetectorManager(
         isRunning = true
         lastDetectedWarnings = emptySet()
         lastPublishedWarnings = emptySet()
+        sessionOwnerSignature = null
+        ownerMatchStreak = 0
         lifecycleRegistry.currentState = Lifecycle.State.STARTED
         startOrientationTracking()
         startSensors(onMetrics)
@@ -142,6 +147,8 @@ class DetectorManager(
         cameraExecutor.shutdown()
         lastDetectedWarnings = emptySet()
         lastPublishedWarnings = emptySet()
+        sessionOwnerSignature = null
+        ownerMatchStreak = 0
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
     }
 
@@ -413,12 +420,21 @@ class DetectorManager(
                 val face = if (faceTask.isSuccessful) faceTask.result?.firstOrNull() else null
                 val pose = if (poseTask.isSuccessful) poseTask.result else null
                 val analysisTimestamp = SystemClock.uptimeMillis()
+                val candidateSignature = face?.let(FaceIdentityMatcher::createSignature)
                 val requiresIdentityMatch = activeProfile?.signature != null
-                val faceMatchesActiveProfile = when {
+                val profileMatch = when {
                     !requiresIdentityMatch -> face != null
-                    face == null -> false
-                    else -> FaceIdentityMatcher.isMatch(face, activeProfile.signature!!)
+                    candidateSignature == null -> false
+                    else -> FaceIdentityMatcher.isMatch(candidateSignature, activeProfile.signature!!)
                 }
+                val sessionMatch = when {
+                    !requiresIdentityMatch -> face != null
+                    !profileMatch -> false
+                    candidateSignature == null -> false
+                    sessionOwnerSignature == null -> true
+                    else -> FaceIdentityMatcher.isSessionMatch(candidateSignature, sessionOwnerSignature!!)
+                }
+                val faceMatchesActiveProfile = profileMatch && sessionMatch
 
                 if (!requiresIdentityMatch) {
                     isIdentityPaused = false
@@ -430,6 +446,7 @@ class DetectorManager(
                     isIdentityPaused = false
                     lastFaceSeenTimestamp = analysisTimestamp
                     lastOwnerMatchTimestamp = analysisTimestamp
+                    candidateSignature?.let(::updateSessionOwnerSignature)
                 } else if (face != null) {
                     // A different face is in front of the camera: pause immediately.
                     isIdentityPaused = true
@@ -549,6 +566,7 @@ class DetectorManager(
         private const val LYING_MAX_GYRO_MAG = 3.0
         private const val LYING_FACE_RECENCY_MS = 5000L
         private const val OWNER_MATCH_GRACE_MS = 1500L
+        private const val OWNER_SIGNATURE_REFRESH_FRAMES = 3
     }
 
     private fun syncActiveProfile() {
@@ -560,6 +578,8 @@ class DetectorManager(
         }
         if (fingerprint == lastAppliedProfileFingerprint) return
         lastAppliedProfileFingerprint = fingerprint
+        sessionOwnerSignature = null
+        ownerMatchStreak = 0
 
         if (profile?.hasValidCalibration == true) {
             setThresholds(
@@ -603,6 +623,15 @@ class DetectorManager(
             orientation in 135..224 -> Surface.ROTATION_180
             orientation in 225..314 -> Surface.ROTATION_90
             else -> Surface.ROTATION_0
+        }
+    }
+
+    private fun updateSessionOwnerSignature(candidateSignature: FaceSignature) {
+        ownerMatchStreak += 1
+        sessionOwnerSignature = if (sessionOwnerSignature == null || ownerMatchStreak >= OWNER_SIGNATURE_REFRESH_FRAMES) {
+            candidateSignature
+        } else {
+            sessionOwnerSignature
         }
     }
 }
