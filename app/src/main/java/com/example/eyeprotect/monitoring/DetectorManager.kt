@@ -6,8 +6,10 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.hardware.display.DisplayManager
 import android.os.SystemClock
 import android.util.Log
+import android.view.Display
 import android.view.OrientationEventListener
 import android.view.Surface
 import android.view.WindowManager
@@ -600,8 +602,12 @@ class DetectorManager(
     private fun Boolean?.orFalse(): Boolean = this ?: false
 
     private fun currentDisplayRotation(): Int {
-        val contextDisplayRotation = context.display?.rotation
+        val contextDisplayRotation = runCatching { context.display?.rotation }.getOrNull()
         if (contextDisplayRotation != null) return contextDisplayRotation
+
+        val displayManager = context.getSystemService(DisplayManager::class.java)
+        val managedDisplayRotation = displayManager?.getDisplay(Display.DEFAULT_DISPLAY)?.rotation
+        if (managedDisplayRotation != null) return managedDisplayRotation
 
         @Suppress("DEPRECATION")
         val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
