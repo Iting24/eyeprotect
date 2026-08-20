@@ -2,6 +2,7 @@ package com.example.eyeprotect.monitoring
 
 import android.annotation.SuppressLint
 import android.Manifest
+import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -11,6 +12,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -60,10 +62,16 @@ class MonitoringForegroundService : Service() {
         LiveMonitoringStore.publishPaused(this)
         persistSessionDuration()
         reportRepo.stopSession()
+        scheduleRestartIfNeeded()
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        scheduleRestartIfNeeded()
+        super.onTaskRemoved(rootIntent)
+    }
 
     private fun startMonitoringIfNeeded() {
         if (detectorManager != null) return
@@ -72,18 +80,26 @@ class MonitoringForegroundService : Service() {
         LiveMonitoringStore.resetSessionSummary(this, sessionStartedAtEpochMs)
 
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        if (!CalibrationPrefs.hasValidCalibration(prefs)) {
+        if (!CalibrationPrefs.hasCompleteCalibrationSet(prefs)) {
             Log.w(TAG, "Monitoring start blocked: missing or invalid calibration")
+            setAutoRestartEnabled(this, false)
             stopSelf()
             return
         }
+        val currentOrientation = CalibrationPrefs.currentDeviceOrientation(this)
+        val initialThresholds = CalibrationPrefs.resolveThresholds(prefs, currentOrientation)
+            ?: run {
+                Log.w(TAG, "Monitoring start blocked: no thresholds resolved for current orientation")
+                setAutoRestartEnabled(this, false)
+                stopSelf()
+                return
+            }
         val ruleDetector = PostureAndEyeDetector().apply {
-            irisDistanceThreshold = prefs.getFloat(CalibrationPrefs.KEY_IRIS_THRESHOLD, irisDistanceThreshold)
+            irisDistanceThreshold = initialThresholds.irisThreshold
             enableTooCloseWarning = true
-            eyeOpenThreshold = prefs.getFloat(CalibrationPrefs.KEY_EYE_OPEN_THRESHOLD, eyeOpenThreshold)
+            eyeOpenThreshold = initialThresholds.eyeOpenThreshold
             enableSquintWarning = true
-            slouchingPostureRatioThreshold =
-                prefs.getFloat(CalibrationPrefs.KEY_SLOUCH_THRESHOLD, slouchingPostureRatioThreshold.toFloat()).toDouble()
+            slouchingPostureRatioThreshold = initialThresholds.slouchThreshold.toDouble()
             enableSlouchWarning = true
         }
 
@@ -91,6 +107,9 @@ class MonitoringForegroundService : Service() {
             context = this,
             faceDetector = faceDetector,
             poseDetector = poseDetector,
+            thresholdsProvider = { orientation ->
+                CalibrationPrefs.resolveThresholds(prefs, orientation)
+            },
             ruleDetector = ruleDetector
         ).also { manager ->
             reportRepo.startSession()
@@ -144,12 +163,15 @@ class MonitoringForegroundService : Service() {
     companion object {
         const val ACTION_START = "com.example.eyeprotect.monitoring.START"
         const val ACTION_STOP = "com.example.eyeprotect.monitoring.STOP"
+        const val ACTION_RESTART = "com.example.eyeprotect.monitoring.RESTART"
 
         private const val TAG = "MonitoringService"
         private const val CHANNEL_ID = "visionguard_monitoring"
         private const val NOTIFICATION_ID = 1101
+        private const val RESTART_DELAY_MS = 1_500L
 
         private const val PREFS_NAME = "eyeprotect_prefs"
+        private const val PREF_AUTO_RESTART_ENABLED = "monitoring_auto_restart_enabled"
         const val PREF_LAST_SESSION_STARTED_AT = "last_session_started_at"
         const val PREF_LAST_SESSION_DURATION_MS = "last_session_duration_ms"
         const val PREF_LAST_TOO_CLOSE_COUNT = "last_too_close_count"
@@ -164,10 +186,11 @@ class MonitoringForegroundService : Service() {
                 return false
             }
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            if (!CalibrationPrefs.hasValidCalibration(prefs)) {
+            if (!CalibrationPrefs.hasCompleteCalibrationSet(prefs)) {
                 Log.w(TAG, "Monitoring start blocked: missing or invalid calibration")
                 return false
             }
+            setAutoRestartEnabled(context, true)
             val intent = Intent(context, MonitoringForegroundService::class.java).setAction(ACTION_START)
             return try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -183,7 +206,20 @@ class MonitoringForegroundService : Service() {
         }
 
         fun stop(context: Context) {
+            setAutoRestartEnabled(context, false)
             context.stopService(Intent(context, MonitoringForegroundService::class.java))
+        }
+
+        fun shouldAutoRestart(context: Context): Boolean {
+            return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getBoolean(PREF_AUTO_RESTART_ENABLED, false)
+        }
+
+        private fun setAutoRestartEnabled(context: Context, enabled: Boolean) {
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(PREF_AUTO_RESTART_ENABLED, enabled)
+                .apply()
         }
 
         private fun Context.hasRequiredMonitoringPermissions(): Boolean {
@@ -212,5 +248,23 @@ class MonitoringForegroundService : Service() {
             .putLong(PREF_LAST_SESSION_DURATION_MS, durationMs)
             .apply()
         sessionStartedAtEpochMs = 0L
+    }
+
+    private fun scheduleRestartIfNeeded() {
+        if (!shouldAutoRestart(this)) return
+        val alarmManager = getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        val restartIntent = Intent(this, MonitoringRestartReceiver::class.java).setAction(ACTION_RESTART)
+        val pendingIntent = PendingIntent.getBroadcast(
+            this,
+            0,
+            restartIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val triggerAtMillis = SystemClock.elapsedRealtime() + RESTART_DELAY_MS
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            alarmManager.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAtMillis, pendingIntent)
+        } else {
+            alarmManager.setExact(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAtMillis, pendingIntent)
+        }
     }
 }

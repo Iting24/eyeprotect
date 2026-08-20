@@ -6,9 +6,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.content.res.Configuration
+import android.hardware.SensorManager
 import android.os.Build
 import android.os.SystemClock
 import android.provider.Settings
+import android.view.OrientationEventListener
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -35,6 +38,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -114,6 +118,8 @@ import kotlinx.coroutines.delay
 
 private const val HISTORY_MAX_POINTS = 120
 private val DashboardContentMaxWidth = 348.dp
+private val DashboardWideContentMaxWidth = 1120.dp
+private val DashboardWideLayoutMinWidth = 760.dp
 @Composable
 private fun cardTitleTextColor(): Color {
     return EyeDesignTokens.colors.textPrimary
@@ -189,6 +195,27 @@ fun DashboardScreen(
     val lyingHistory = remember { mutableStateListOf<Float>() }
     var expandedMetric by remember { mutableStateOf<HistoryMetric?>(null) }
     var monitoringDetailsOpen by remember { mutableStateOf(false) }
+    var currentDeviceOrientation by remember {
+        mutableIntStateOf(CalibrationPrefs.currentDeviceOrientation(context))
+    }
+
+    DisposableEffect(context) {
+        val orientationListener = object : OrientationEventListener(context.applicationContext, SensorManager.SENSOR_DELAY_UI) {
+            override fun onOrientationChanged(orientation: Int) {
+                if (orientation == ORIENTATION_UNKNOWN) return
+                currentDeviceOrientation = when {
+                    orientation in 45..134 || orientation in 225..314 -> Configuration.ORIENTATION_LANDSCAPE
+                    else -> Configuration.ORIENTATION_PORTRAIT
+                }
+            }
+        }
+
+        if (orientationListener.canDetectOrientation()) {
+            orientationListener.enable()
+        }
+
+        onDispose { orientationListener.disable() }
+    }
 
     DisposableEffect(lifecycleOwner, context) {
         val observer = LifecycleEventObserver { _, event ->
@@ -372,155 +399,292 @@ fun DashboardScreen(
             )
         }
 
-        val dashboardListState = rememberLazyListState()
-
-        LazyColumn(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Transparent),
-            state = dashboardListState,
-            contentPadding = PaddingValues(top = spacing.xs),
-            verticalArrangement = Arrangement.spacedBy(0.dp)
+                .background(Color.Transparent)
         ) {
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFFC8FFF5))
-                        .padding(horizontal = spacing.lg)
-                        .padding(bottom = spacing.xs)
-                ) {
-                    DashboardHeader(
-                        heroState = heroState,
-                        monitoringEnabled = monitoringEnabled,
-                        monitoringReady = monitoringReady,
-                        toggleEnabled = monitoringReady,
-                        onToggleMonitoring = setMonitoringEnabled
-                    )
-                }
-            }
+            val isWideLayout = maxWidth >= DashboardWideLayoutMinWidth
+            val containerMaxWidth = if (isWideLayout) DashboardWideContentMaxWidth else DashboardContentMaxWidth
+            val dashboardListState = rememberLazyListState()
 
-            item {
-                MascotCoachCard(
-                    monitoringReady = monitoringReady,
-                    monitoringEnabled = monitoringEnabled,
-                    alertsReady = alertsReady,
-                    warningsMask = warningsMask,
-                    faceDetected = faceDetected,
-                    faceError = faceError,
-                    poseError = poseError
-                )
-            }
-
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFF55D7CB))
-                        .padding(horizontal = spacing.lg)
-                        .padding(top = spacing.sm, bottom = spacing.sm)
-                ) {
-                    ScoreStreakCard(
-                        heroState = heroState,
-                        monitoringReady = monitoringReady
-                    )
-                }
-            }
-
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFF55D7CB))
-                        .padding(horizontal = spacing.lg)
-                        .padding(bottom = spacing.sm),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(modifier = Modifier.widthIn(max = DashboardContentMaxWidth)) {
-                        SetupCard(
-                            hasCameraPermission = hasCameraPermission,
-                            hasCalibrated = hasCalibrated,
-                            hasNotificationPermission = hasNotificationPermission,
-                            isServiceEnabled = isServiceEnabled,
-                            monitoringEnabled = if (monitoringReady) monitoringEnabled else false,
-                            onRequestCamera = { permissionLauncher.launch(Manifest.permission.CAMERA) },
-                            onRequestNotifications = requestNotificationPermission,
-                            onOpenCalibration = onReCalibrate,
-                            onOpenAccessibilitySettings = {
-                                val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                                context.startActivity(intent)
-                            },
-                            onEnableMonitoring = if (monitoringReady) ({ setMonitoringEnabled(true) }) else null
-                        )
-                    }
-                }
-            }
-
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFF55D7CB))
-                        .padding(horizontal = spacing.lg)
-                        .padding(bottom = spacing.sm)
-                ) {
-                    MetricOverviewCard(
-                        irisNorm = irisNorm,
-                        eyeOpenMin = eyeOpenMin,
-                        postureRatio = slouchScore,
-                        tiltDeg = tiltDeg,
-                        pitchDeg = pitchDeg,
-                        rollDeg = rollDeg,
-                        warningsMask = warningsMask,
-                        irisThreshold = irisThreshold,
-                        eyeOpenThreshold = eyeOpenThreshold,
-                        postureThreshold = slouchThreshold,
-                        faceDetected = faceDetected,
-                        poseDetected = poseDetected,
-                        faceError = faceError,
-                        poseError = poseError,
-                        distanceTrend = distanceHistory,
-                        eyeTrend = eyeOpenHistory,
-                        postureTrend = postureHistory,
-                        lyingTrend = lyingHistory,
-                        expandedMetric = expandedMetric,
-                        onToggleMetric = { metric ->
-                            expandedMetric = if (expandedMetric == metric) null else metric
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                state = dashboardListState,
+                contentPadding = PaddingValues(top = spacing.xs),
+                verticalArrangement = Arrangement.spacedBy(0.dp)
+            ) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFFC8FFF5))
+                            .padding(horizontal = spacing.lg)
+                            .padding(bottom = spacing.xs),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .widthIn(max = containerMaxWidth)
+                        ) {
+                            DashboardHeader(
+                                heroState = heroState,
+                                monitoringEnabled = monitoringEnabled,
+                                monitoringReady = monitoringReady,
+                                currentDeviceOrientation = currentDeviceOrientation,
+                                toggleEnabled = monitoringReady,
+                                onToggleMonitoring = setMonitoringEnabled
+                            )
                         }
-                    )
+                    }
                 }
-            }
 
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFF55D7CB))
-                        .padding(horizontal = spacing.lg)
-                        .padding(bottom = spacing.md),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(modifier = Modifier.widthIn(max = DashboardContentMaxWidth)) {
-                        ExpandableMonitoringStatusCard(
-                            expanded = monitoringDetailsOpen,
-                            onToggle = { monitoringDetailsOpen = !monitoringDetailsOpen },
-                            monitoringEnabled = monitoringEnabled && monitoringReady,
+                if (isWideLayout) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF55D7CB))
+                                .padding(horizontal = spacing.lg)
+                                .padding(bottom = spacing.sm),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .widthIn(max = containerMaxWidth),
+                                horizontalArrangement = Arrangement.spacedBy(spacing.md),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Box(modifier = Modifier.weight(1f)) {
+                                    MascotCoachCard(
+                                        monitoringReady = monitoringReady,
+                                        monitoringEnabled = monitoringEnabled,
+                                        alertsReady = alertsReady,
+                                        warningsMask = warningsMask,
+                                        faceDetected = faceDetected,
+                                        faceError = faceError,
+                                        poseError = poseError
+                                    )
+                                }
+                                Box(modifier = Modifier.weight(1f)) {
+                                    ScoreStreakCard(
+                                        heroState = heroState,
+                                        monitoringReady = monitoringReady
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF55D7CB))
+                                .padding(horizontal = spacing.lg)
+                                .padding(bottom = spacing.md),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .widthIn(max = containerMaxWidth),
+                                horizontalArrangement = Arrangement.spacedBy(spacing.md),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(spacing.sm)
+                                ) {
+                                    SetupCard(
+                                        hasCameraPermission = hasCameraPermission,
+                                        hasCalibrated = hasCalibrated,
+                                        hasNotificationPermission = hasNotificationPermission,
+                                        isServiceEnabled = isServiceEnabled,
+                                        monitoringEnabled = if (monitoringReady) monitoringEnabled else false,
+                                        onRequestCamera = { permissionLauncher.launch(Manifest.permission.CAMERA) },
+                                        onRequestNotifications = requestNotificationPermission,
+                                        onOpenCalibration = onReCalibrate,
+                                        onOpenAccessibilitySettings = {
+                                            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                            context.startActivity(intent)
+                                        },
+                                        onEnableMonitoring = if (monitoringReady) ({ setMonitoringEnabled(true) }) else null
+                                    )
+                                    ExpandableMonitoringStatusCard(
+                                        expanded = monitoringDetailsOpen,
+                                        onToggle = { monitoringDetailsOpen = !monitoringDetailsOpen },
+                                        monitoringEnabled = monitoringEnabled && monitoringReady,
+                                        alertsReady = alertsReady,
+                                        liveTsUptimeMs = liveTs,
+                                        faceSeenUptimeMs = faceSeenUptimeMs,
+                                        lastWasCameraFrame = lastWasCameraFrame,
+                                        faceDetected = faceDetected,
+                                        poseDetected = poseDetected,
+                                        faceError = faceError,
+                                        poseError = poseError,
+                                        pitchDeg = pitchDeg,
+                                        rollDeg = rollDeg,
+                                        tiltDeg = tiltDeg
+                                    )
+                                }
+                                Box(modifier = Modifier.weight(1f)) {
+                                    MetricOverviewCard(
+                                        irisNorm = irisNorm,
+                                        eyeOpenMin = eyeOpenMin,
+                                        postureRatio = slouchScore,
+                                        tiltDeg = tiltDeg,
+                                        pitchDeg = pitchDeg,
+                                        rollDeg = rollDeg,
+                                        warningsMask = warningsMask,
+                                        irisThreshold = irisThreshold,
+                                        eyeOpenThreshold = eyeOpenThreshold,
+                                        postureThreshold = slouchThreshold,
+                                        faceDetected = faceDetected,
+                                        poseDetected = poseDetected,
+                                        faceError = faceError,
+                                        poseError = poseError,
+                                        distanceTrend = distanceHistory,
+                                        eyeTrend = eyeOpenHistory,
+                                        postureTrend = postureHistory,
+                                        lyingTrend = lyingHistory,
+                                        expandedMetric = expandedMetric,
+                                        onToggleMetric = { metric ->
+                                            expandedMetric = if (expandedMetric == metric) null else metric
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    item {
+                        MascotCoachCard(
+                            monitoringReady = monitoringReady,
+                            monitoringEnabled = monitoringEnabled,
                             alertsReady = alertsReady,
-                            liveTsUptimeMs = liveTs,
-                            faceSeenUptimeMs = faceSeenUptimeMs,
-                            lastWasCameraFrame = lastWasCameraFrame,
+                            warningsMask = warningsMask,
                             faceDetected = faceDetected,
-                            poseDetected = poseDetected,
                             faceError = faceError,
-                            poseError = poseError,
-                            pitchDeg = pitchDeg,
-                            rollDeg = rollDeg,
-                            tiltDeg = tiltDeg
+                            poseError = poseError
                         )
+                    }
+
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF55D7CB))
+                                .padding(horizontal = spacing.lg)
+                                .padding(top = spacing.sm, bottom = spacing.sm)
+                        ) {
+                            ScoreStreakCard(
+                                heroState = heroState,
+                                monitoringReady = monitoringReady
+                            )
+                        }
+                    }
+
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF55D7CB))
+                                .padding(horizontal = spacing.lg)
+                                .padding(bottom = spacing.sm),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(modifier = Modifier.widthIn(max = DashboardContentMaxWidth)) {
+                                SetupCard(
+                                    hasCameraPermission = hasCameraPermission,
+                                    hasCalibrated = hasCalibrated,
+                                    hasNotificationPermission = hasNotificationPermission,
+                                    isServiceEnabled = isServiceEnabled,
+                                    monitoringEnabled = if (monitoringReady) monitoringEnabled else false,
+                                    onRequestCamera = { permissionLauncher.launch(Manifest.permission.CAMERA) },
+                                    onRequestNotifications = requestNotificationPermission,
+                                    onOpenCalibration = onReCalibrate,
+                                    onOpenAccessibilitySettings = {
+                                        val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                        context.startActivity(intent)
+                                    },
+                                    onEnableMonitoring = if (monitoringReady) ({ setMonitoringEnabled(true) }) else null
+                                )
+                            }
+                        }
+                    }
+
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF55D7CB))
+                                .padding(horizontal = spacing.lg)
+                                .padding(bottom = spacing.sm),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(modifier = Modifier.widthIn(max = DashboardContentMaxWidth)) {
+                                MetricOverviewCard(
+                                    irisNorm = irisNorm,
+                                    eyeOpenMin = eyeOpenMin,
+                                    postureRatio = slouchScore,
+                                    tiltDeg = tiltDeg,
+                                    pitchDeg = pitchDeg,
+                                    rollDeg = rollDeg,
+                                    warningsMask = warningsMask,
+                                    irisThreshold = irisThreshold,
+                                    eyeOpenThreshold = eyeOpenThreshold,
+                                    postureThreshold = slouchThreshold,
+                                    faceDetected = faceDetected,
+                                    poseDetected = poseDetected,
+                                    faceError = faceError,
+                                    poseError = poseError,
+                                    distanceTrend = distanceHistory,
+                                    eyeTrend = eyeOpenHistory,
+                                    postureTrend = postureHistory,
+                                    lyingTrend = lyingHistory,
+                                    expandedMetric = expandedMetric,
+                                    onToggleMetric = { metric ->
+                                        expandedMetric = if (expandedMetric == metric) null else metric
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF55D7CB))
+                                .padding(horizontal = spacing.lg)
+                                .padding(bottom = spacing.md),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(modifier = Modifier.widthIn(max = DashboardContentMaxWidth)) {
+                                ExpandableMonitoringStatusCard(
+                                    expanded = monitoringDetailsOpen,
+                                    onToggle = { monitoringDetailsOpen = !monitoringDetailsOpen },
+                                    monitoringEnabled = monitoringEnabled && monitoringReady,
+                                    alertsReady = alertsReady,
+                                    liveTsUptimeMs = liveTs,
+                                    faceSeenUptimeMs = faceSeenUptimeMs,
+                                    lastWasCameraFrame = lastWasCameraFrame,
+                                    faceDetected = faceDetected,
+                                    poseDetected = poseDetected,
+                                    faceError = faceError,
+                                    poseError = poseError,
+                                    pitchDeg = pitchDeg,
+                                    rollDeg = rollDeg,
+                                    tiltDeg = tiltDeg
+                                )
+                            }
+                        }
                     }
                 }
             }
-
         }
     }
 }
@@ -644,29 +808,34 @@ private fun MascotCoachCard(
     var messageIndex by remember(dialogue) { mutableIntStateOf(0) }
     val activeMessage = bubbleMessages[messageIndex % bubbleMessages.size]
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(328.dp)
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxWidth()
     ) {
-        MascotRoomBackdrop(modifier = Modifier.matchParentSize())
-        Column(
+        val cardHeight = if (maxWidth > 520.dp) 248.dp else 328.dp
+        Box(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .fillMaxWidth()
+                .height(cardHeight)
         ) {
-            SpeechBubble(
-                text = activeMessage,
+            MascotRoomBackdrop(modifier = Modifier.matchParentSize())
+            Column(
                 modifier = Modifier
-                    .padding(bottom = 4.dp)
-                    .widthIn(max = 264.dp)
-            )
-            EyeMascotAvatar(
-                modifier = Modifier.clickable { messageIndex = (messageIndex + 1) % bubbleMessages.size },
-                dialogue = dialogue
-            )
-            Spacer(modifier = Modifier.height(22.dp))
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                SpeechBubble(
+                    text = activeMessage,
+                    modifier = Modifier
+                        .padding(bottom = 4.dp)
+                        .widthIn(max = 264.dp)
+                )
+                EyeMascotAvatar(
+                    modifier = Modifier.clickable { messageIndex = (messageIndex + 1) % bubbleMessages.size },
+                    dialogue = dialogue
+                )
+                Spacer(modifier = Modifier.height(22.dp))
+            }
         }
     }
 }
@@ -2432,6 +2601,7 @@ private fun DashboardHeader(
     heroState: DashboardHeroState,
     monitoringEnabled: Boolean,
     monitoringReady: Boolean,
+    currentDeviceOrientation: Int,
     toggleEnabled: Boolean,
     onToggleMonitoring: (Boolean) -> Unit
 ) {
@@ -2461,6 +2631,17 @@ private fun DashboardHeader(
             modifier = Modifier.padding(top = 16.dp),
             style = EyeDesignTokens.typography.bodySmall,
             color = headerAccent,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            text = if (currentDeviceOrientation == Configuration.ORIENTATION_LANDSCAPE) {
+                "目前系統判定：橫向使用"
+            } else {
+                "目前系統判定：直向使用"
+            },
+            modifier = Modifier.padding(top = 10.dp),
+            style = EyeDesignTokens.typography.bodySmall,
+            color = colors.textSecondary,
             textAlign = TextAlign.Center
         )
         Spacer(modifier = Modifier.height(10.dp))

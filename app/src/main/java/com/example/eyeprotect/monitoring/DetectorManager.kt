@@ -1,11 +1,17 @@
 package com.example.eyeprotect.monitoring
 
 import android.content.Context
+import android.content.res.Configuration
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.hardware.display.DisplayManager
 import android.os.SystemClock
+import android.view.Display
+import android.view.OrientationEventListener
+import android.view.Surface
+import android.view.WindowManager
 import android.util.Log
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ExperimentalGetImage
@@ -16,11 +22,14 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
+import com.example.eyeprotect.CalibrationPrefs
 import com.example.eyeprotect.PostureAndEyeDetector
 import com.example.eyeprotect.WarningState
 import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.face.Face
 import com.google.mlkit.vision.face.FaceDetector
+import com.google.mlkit.vision.pose.Pose
 import com.google.mlkit.vision.pose.PoseDetector
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -35,6 +44,7 @@ class DetectorManager(
     private val context: Context,
     private val faceDetector: FaceDetector,
     private val poseDetector: PoseDetector,
+    private val thresholdsProvider: ((Int) -> CalibrationPrefs.Thresholds?)? = null,
     private val ruleDetector: PostureAndEyeDetector = PostureAndEyeDetector()
 ) : LifecycleOwner {
 
@@ -50,11 +60,13 @@ class DetectorManager(
     private var rotationVectorSensor: Sensor? = null
     private var gyroSensor: Sensor? = null
     private var gravitySensor: Sensor? = null
+    private var orientationListener: OrientationEventListener? = null
 
     private var lastDetectionTimestamp = 0L
     private var lastSensorPublishTimestamp = 0L
     private var lastFaceSeenTimestamp = 0L
     private var lastGyroMagnitude = 0.0
+    private var currentTargetRotation = currentDisplayRotation()
 
     private var lastPitchDegrees = Double.NaN
     private var lastRollDegrees = Double.NaN
@@ -116,6 +128,8 @@ class DetectorManager(
         lastDetectedWarnings = emptySet()
         lastPublishedWarnings = emptySet()
         lifecycleRegistry.currentState = Lifecycle.State.STARTED
+        syncThresholdsForOrientation(context.resources.configuration.orientation)
+        startOrientationTracking()
         startSensors(onMetrics)
         startCamera(onMetrics, onWarnings, onWarningActivated, onWarningDeactivated)
     }
@@ -125,6 +139,7 @@ class DetectorManager(
         isRunning = false
         stopCamera()
         stopSensors()
+        stopOrientationTracking()
         cameraExecutor.shutdown()
         lastDetectedWarnings = emptySet()
         lastPublishedWarnings = emptySet()
@@ -162,11 +177,64 @@ class DetectorManager(
         }
     }
 
+    private fun startOrientationTracking() {
+        if (orientationListener != null) return
+        orientationListener = object : OrientationEventListener(context.applicationContext) {
+            override fun onOrientationChanged(orientation: Int) {
+                if (orientation == ORIENTATION_UNKNOWN) return
+                val updatedRotation = orientationToSurfaceRotation(orientation)
+                if (currentTargetRotation == updatedRotation) return
+                currentTargetRotation = updatedRotation
+                syncThresholdsForOrientation(
+                    if (updatedRotation == Surface.ROTATION_90 || updatedRotation == Surface.ROTATION_270) {
+                        Configuration.ORIENTATION_LANDSCAPE
+                    } else {
+                        Configuration.ORIENTATION_PORTRAIT
+                    }
+                )
+                imageAnalyzer?.targetRotation = updatedRotation
+            }
+        }.also { listener ->
+            if (listener.canDetectOrientation()) {
+                listener.enable()
+            } else {
+                currentTargetRotation = currentDisplayRotation()
+            }
+        }
+    }
+
+    private fun stopOrientationTracking() {
+        orientationListener?.disable()
+        orientationListener = null
+    }
+
     private fun updateOrientationFromRotationVector(values: FloatArray) {
         val rotationMatrix = FloatArray(9)
+        val adjustedRotationMatrix = FloatArray(9)
         val orientation = FloatArray(3)
         SensorManager.getRotationMatrixFromVector(rotationMatrix, values)
-        SensorManager.getOrientation(rotationMatrix, orientation)
+        when (currentTargetRotation) {
+            Surface.ROTATION_90 -> SensorManager.remapCoordinateSystem(
+                rotationMatrix,
+                SensorManager.AXIS_Y,
+                SensorManager.AXIS_MINUS_X,
+                adjustedRotationMatrix
+            )
+            Surface.ROTATION_180 -> SensorManager.remapCoordinateSystem(
+                rotationMatrix,
+                SensorManager.AXIS_MINUS_X,
+                SensorManager.AXIS_MINUS_Y,
+                adjustedRotationMatrix
+            )
+            Surface.ROTATION_270 -> SensorManager.remapCoordinateSystem(
+                rotationMatrix,
+                SensorManager.AXIS_MINUS_Y,
+                SensorManager.AXIS_X,
+                adjustedRotationMatrix
+            )
+            else -> rotationMatrix.copyInto(adjustedRotationMatrix)
+        }
+        SensorManager.getOrientation(adjustedRotationMatrix, orientation)
 
         val pitchRad = orientation[1].toDouble()
         val rollRad = orientation[2].toDouble()
@@ -251,6 +319,7 @@ class DetectorManager(
                     val analyzerImpl = FrameAnalyzer(onMetrics, onWarnings, onWarningActivated, onWarningDeactivated)
                     val analyzer = ImageAnalysis.Builder()
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                        .setTargetRotation(currentTargetRotation)
                         .build()
                         .also { it.setAnalyzer(cameraExecutor, analyzerImpl) }
                     imageAnalyzer = analyzer
@@ -314,6 +383,13 @@ class DetectorManager(
             return
         }
         val now = SystemClock.uptimeMillis()
+        syncThresholdsForOrientation(
+            if (currentTargetRotation == Surface.ROTATION_90 || currentTargetRotation == Surface.ROTATION_270) {
+                Configuration.ORIENTATION_LANDSCAPE
+            } else {
+                Configuration.ORIENTATION_PORTRAIT
+            }
+        )
         if (now - lastDetectionTimestamp < DETECTION_INTERVAL_MS) {
             publishSensorMetricsIfNeeded(onMetrics)
             imageProxy.close()
@@ -327,82 +403,87 @@ class DetectorManager(
             imageProxy.close()
             return
         }
-        val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-        val imageWidth = if (imageProxy.imageInfo.rotationDegrees % 180 == 0) imageProxy.width else imageProxy.height
-        val imageHeight = if (imageProxy.imageInfo.rotationDegrees % 180 == 0) imageProxy.height else imageProxy.width
+        try {
+            val detection = detectBestFrameResult(
+                mediaImage = mediaImage,
+                sourceWidth = imageProxy.width,
+                sourceHeight = imageProxy.height,
+                primaryRotationDegrees = imageProxy.imageInfo.rotationDegrees
+            )
+            if (!isRunning) return
 
-        val faceTask = faceDetector.process(image)
-        val poseTask = poseDetector.process(image)
+            val face = detection.face
+            val pose = detection.pose
+            if (face != null) lastFaceSeenTimestamp = SystemClock.uptimeMillis()
 
-        Tasks.whenAllComplete(faceTask, poseTask).addOnCompleteListener {
-            try {
-                if (!isRunning) {
-                    return@addOnCompleteListener
-                }
-                val face = if (faceTask.isSuccessful) faceTask.result?.firstOrNull() else null
-                val pose = if (poseTask.isSuccessful) poseTask.result else null
-                if (face != null) lastFaceSeenTimestamp = SystemClock.uptimeMillis()
+            val warnings = ruleDetector.detectWarnings(
+                face = face,
+                pose = pose,
+                imageWidth = detection.imageWidth,
+                imageHeight = detection.imageHeight
+            )
 
-                val warnings = ruleDetector.detectWarnings(
-                    face = face,
-                    pose = pose,
-                    imageWidth = imageWidth,
-                    imageHeight = imageHeight
+            val detectedWarningsWithLying = if (isLyingActive) warnings + WarningState.LYING else warnings
+            val activatedDetectedWarnings = detectedWarningsWithLying - lastDetectedWarnings
+            val deactivatedDetectedWarnings = lastDetectedWarnings - detectedWarningsWithLying
+            activatedDetectedWarnings.forEach(onWarningActivated)
+            deactivatedDetectedWarnings.forEach(onWarningDeactivated)
+            lastDetectedWarnings = detectedWarningsWithLying
+
+            val stableWarnings = stabilizeCameraWarnings(warnings)
+            val warningsWithLying = if (isLyingActive) stableWarnings + WarningState.LYING else stableWarnings
+            lastPublishedWarnings = warningsWithLying
+            onWarnings(warningsWithLying)
+            val irisNorm = face?.let { ruleDetector.computeNormalizedIrisDistance(it, detection.imageWidth) }
+            val eyeOpenMin = face?.let { ruleDetector.computeEyeOpenMin(it) }
+            val slouchScore = pose?.let { ruleDetector.computePostureRatio(it) }?.toFloat()
+
+            val warningsMask =
+                (if (warningsWithLying.contains(WarningState.TOO_CLOSE)) 1 else 0) or
+                    (if (warningsWithLying.contains(WarningState.SQUINTING)) 2 else 0) or
+                    (if (warningsWithLying.contains(WarningState.SLOUCHING)) 4 else 0) or
+                    (if (warningsWithLying.contains(WarningState.LYING)) 8 else 0)
+            val detectedWarningsMask =
+                (if (detectedWarningsWithLying.contains(WarningState.TOO_CLOSE)) 1 else 0) or
+                    (if (detectedWarningsWithLying.contains(WarningState.SQUINTING)) 2 else 0) or
+                    (if (detectedWarningsWithLying.contains(WarningState.SLOUCHING)) 4 else 0) or
+                    (if (detectedWarningsWithLying.contains(WarningState.LYING)) 8 else 0)
+
+            onMetrics(
+                MonitoringMetrics(
+                    ts = SystemClock.uptimeMillis(),
+                    warningsMask = warningsMask,
+                    detectedWarningsMask = detectedWarningsMask,
+                    isLyingActive = isLyingActive,
+                    lastFaceDetectedTime = lastFaceSeenTimestamp,
+                    isCameraFrame = true,
+                    faceDetected = face != null,
+                    poseDetected = pose != null,
+                    faceError = detection.faceError,
+                    poseError = detection.poseError,
+                    irisNorm = irisNorm,
+                    eyeOpenMin = eyeOpenMin,
+                    slouchScore = slouchScore,
+                    pitchDeg = if (!lastPitchDegrees.isNaN()) lastPitchDegrees.toFloat() else null,
+                    rollDeg = if (!lastRollDegrees.isNaN()) lastRollDegrees.toFloat() else null,
+                    tiltDeg = if (!lastTiltDegrees.isNaN()) lastTiltDegrees.toFloat() else null
                 )
-
-                val detectedWarningsWithLying = if (isLyingActive) warnings + WarningState.LYING else warnings
-                val activatedDetectedWarnings = detectedWarningsWithLying - lastDetectedWarnings
-                val deactivatedDetectedWarnings = lastDetectedWarnings - detectedWarningsWithLying
-                activatedDetectedWarnings.forEach(onWarningActivated)
-                deactivatedDetectedWarnings.forEach(onWarningDeactivated)
-                lastDetectedWarnings = detectedWarningsWithLying
-
-                val stableWarnings = stabilizeCameraWarnings(warnings)
-                val warningsWithLying = if (isLyingActive) stableWarnings + WarningState.LYING else stableWarnings
-                lastPublishedWarnings = warningsWithLying
-                onWarnings(warningsWithLying)
-                val irisNorm = face?.let { ruleDetector.computeNormalizedIrisDistance(it, imageWidth) }
-                val eyeOpenMin = face?.let { ruleDetector.computeEyeOpenMin(it) }
-                val slouchScore = pose?.let { ruleDetector.computePostureRatio(it) }?.toFloat()
-
-                val warningsMask =
-                    (if (warningsWithLying.contains(WarningState.TOO_CLOSE)) 1 else 0) or
-                        (if (warningsWithLying.contains(WarningState.SQUINTING)) 2 else 0) or
-                        (if (warningsWithLying.contains(WarningState.SLOUCHING)) 4 else 0) or
-                        (if (warningsWithLying.contains(WarningState.LYING)) 8 else 0)
-                val detectedWarningsMask =
-                    (if (detectedWarningsWithLying.contains(WarningState.TOO_CLOSE)) 1 else 0) or
-                        (if (detectedWarningsWithLying.contains(WarningState.SQUINTING)) 2 else 0) or
-                        (if (detectedWarningsWithLying.contains(WarningState.SLOUCHING)) 4 else 0) or
-                        (if (detectedWarningsWithLying.contains(WarningState.LYING)) 8 else 0)
-
-                onMetrics(
-                    MonitoringMetrics(
-                        ts = SystemClock.uptimeMillis(),
-                        warningsMask = warningsMask,
-                        detectedWarningsMask = detectedWarningsMask,
-                        isLyingActive = isLyingActive,
-                        lastFaceDetectedTime = lastFaceSeenTimestamp,
-                        isCameraFrame = true,
-                        faceDetected = face != null,
-                        poseDetected = pose != null,
-                        faceError = !faceTask.isSuccessful,
-                        poseError = !poseTask.isSuccessful,
-                        irisNorm = irisNorm,
-                        eyeOpenMin = eyeOpenMin,
-                        slouchScore = slouchScore,
-                        pitchDeg = if (!lastPitchDegrees.isNaN()) lastPitchDegrees.toFloat() else null,
-                        rollDeg = if (!lastRollDegrees.isNaN()) lastRollDegrees.toFloat() else null,
-                        tiltDeg = if (!lastTiltDegrees.isNaN()) lastTiltDegrees.toFloat() else null
-                    )
-                )
-            } catch (exception: RuntimeException) {
-                Log.e(TAG, "Camera analysis failed", exception)
-                publishCameraError(onMetrics)
-            } finally {
-                imageProxy.close()
-            }
+            )
+        } catch (exception: RuntimeException) {
+            Log.e(TAG, "Camera analysis failed", exception)
+            publishCameraError(onMetrics)
+        } finally {
+            imageProxy.close()
         }
+    }
+
+    private fun syncThresholdsForOrientation(orientation: Int) {
+        val thresholds = thresholdsProvider?.invoke(orientation) ?: return
+        setThresholds(
+            irisDistance = thresholds.irisThreshold,
+            eyeOpenThreshold = thresholds.eyeOpenThreshold,
+            slouchRatioThreshold = thresholds.slouchThreshold.toDouble()
+        )
     }
 
     private fun stabilizeCameraWarnings(warnings: Set<WarningState>): Set<WarningState> {
@@ -416,6 +497,99 @@ class DetectorManager(
             if (slouchWarningStreak >= CAMERA_WARNING_CONFIRM_FRAMES) add(WarningState.SLOUCHING)
         }
     }
+
+    private fun detectBestFrameResult(
+        mediaImage: android.media.Image,
+        sourceWidth: Int,
+        sourceHeight: Int,
+        primaryRotationDegrees: Int
+    ): FrameDetectionResult {
+        val candidateRotations = buildList {
+            add(primaryRotationDegrees)
+            addAll(FALLBACK_ROTATION_DEGREES)
+        }.distinct()
+
+        var firstResult: FrameDetectionResult? = null
+        for (rotationDegrees in candidateRotations) {
+            val result = detectFrame(mediaImage, sourceWidth, sourceHeight, rotationDegrees)
+            if (firstResult == null) firstResult = result
+            if (result.face != null) return result
+        }
+        return firstResult ?: FrameDetectionResult(
+            face = null,
+            pose = null,
+            imageWidth = sourceWidth,
+            imageHeight = sourceHeight,
+            faceError = true,
+            poseError = true
+        )
+    }
+
+    private fun detectFrame(
+        mediaImage: android.media.Image,
+        sourceWidth: Int,
+        sourceHeight: Int,
+        rotationDegrees: Int
+    ): FrameDetectionResult {
+        val image = InputImage.fromMediaImage(mediaImage, rotationDegrees)
+        val imageWidth = if (rotationDegrees % 180 == 0) sourceWidth else sourceHeight
+        val imageHeight = if (rotationDegrees % 180 == 0) sourceHeight else sourceWidth
+
+        val faceTask = faceDetector.process(image)
+        val poseTask = poseDetector.process(image)
+        Tasks.whenAllComplete(faceTask, poseTask)
+
+        val faceResult = runCatching { Tasks.await(faceTask).firstOrNull() }.getOrNull()
+        val poseResult = runCatching { Tasks.await(poseTask) }.getOrNull()
+
+        return FrameDetectionResult(
+            face = faceResult,
+            pose = poseResult,
+            imageWidth = imageWidth,
+            imageHeight = imageHeight,
+            faceError = faceTask.isCanceled || faceTask.exception != null,
+            poseError = poseTask.isCanceled || poseTask.exception != null
+        )
+    }
+
+    private fun currentDisplayRotation(): Int {
+        val contextDisplayRotation = runCatching { context.display?.rotation }.getOrNull()
+        if (contextDisplayRotation != null) return contextDisplayRotation
+
+        val displayManager = context.getSystemService(DisplayManager::class.java)
+        val managedDisplayRotation = displayManager?.getDisplay(Display.DEFAULT_DISPLAY)?.rotation
+        if (managedDisplayRotation != null) return managedDisplayRotation
+
+        @Suppress("DEPRECATION")
+        val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+        @Suppress("DEPRECATION")
+        val windowRotation = windowManager?.defaultDisplay?.rotation
+        if (windowRotation != null) return windowRotation
+
+        return when (context.resources.configuration.orientation) {
+            Configuration.ORIENTATION_LANDSCAPE -> Surface.ROTATION_90
+            Configuration.ORIENTATION_PORTRAIT -> Surface.ROTATION_0
+            else -> Surface.ROTATION_0
+        }
+    }
+
+    private fun orientationToSurfaceRotation(orientation: Int): Int {
+        return when {
+            orientation in 45..134 -> Surface.ROTATION_270
+            orientation in 135..224 -> Surface.ROTATION_180
+            orientation in 225..314 -> Surface.ROTATION_90
+            else -> Surface.ROTATION_0
+        }
+    }
+
+    private data class FrameDetectionResult(
+        val face: Face?,
+        val pose: Pose?,
+        val imageWidth: Int,
+        val imageHeight: Int,
+        val faceError: Boolean,
+        val poseError: Boolean
+    )
 
     private inner class FrameAnalyzer(
         private val onMetrics: (MonitoringMetrics) -> Unit,
@@ -443,5 +617,6 @@ class DetectorManager(
         private const val LYING_MIN_GYRO_MAG = 0.03
         private const val LYING_MAX_GYRO_MAG = 3.0
         private const val LYING_FACE_RECENCY_MS = 5000L
+        private val FALLBACK_ROTATION_DEGREES = listOf(0, 90, 270, 180)
     }
 }

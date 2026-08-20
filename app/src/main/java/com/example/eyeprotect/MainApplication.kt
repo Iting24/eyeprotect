@@ -9,6 +9,7 @@ class MainApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         val prefs = getSharedPreferences(PreferenceKeys.PREFS_NAME, MODE_PRIVATE)
+        CalibrationPrefs.ensureCurrentCalibrationSchema(prefs)
         val isDarkModeEnabled = prefs.getBoolean(PreferenceKeys.PREF_DARK_MODE_ENABLED, false)
         AppCompatDelegate.setDefaultNightMode(
             if (isDarkModeEnabled) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO

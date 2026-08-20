@@ -16,6 +16,7 @@ enum class WarningState {
 }
 
 class PostureAndEyeDetector {
+    private val minPoseLikelihood = 0.65f
 
     var enableTooCloseWarning = false
     var enableSlouchWarning = false
@@ -40,12 +41,8 @@ class PostureAndEyeDetector {
         val leftOpen = face.leftEyeOpenProbability
         val rightOpen = face.rightEyeOpenProbability
 
-        return when {
-            leftOpen != null && rightOpen != null -> minOf(leftOpen, rightOpen)
-            leftOpen != null -> leftOpen
-            rightOpen != null -> rightOpen
-            else -> null
-        }
+        if (leftOpen == null || rightOpen == null) return null
+        return minOf(leftOpen, rightOpen)
     }
 
     fun computePostureRatio(pose: Pose): Double? {
@@ -55,6 +52,12 @@ class PostureAndEyeDetector {
         val rightShoulder = pose.getPoseLandmark(PoseLandmark.RIGHT_SHOULDER)
 
         if (leftEar == null || rightEar == null || leftShoulder == null || rightShoulder == null) return null
+        if (
+            leftEar.inFrameLikelihood < minPoseLikelihood ||
+            rightEar.inFrameLikelihood < minPoseLikelihood ||
+            leftShoulder.inFrameLikelihood < minPoseLikelihood ||
+            rightShoulder.inFrameLikelihood < minPoseLikelihood
+        ) return null
 
         val earY = (leftEar.position.y + rightEar.position.y) / 2
         val shoulderY = (leftShoulder.position.y + rightShoulder.position.y) / 2
@@ -79,11 +82,13 @@ class PostureAndEyeDetector {
         imageHeight: Int
     ): Set<WarningState> {
         val warnings = mutableSetOf<WarningState>()
+        val hasUsableFace = face?.hasUsableFaceData() == true
 
-        face?.let {
+        if (hasUsableFace) {
+            val detectedFace = face ?: return warnings
             // 1. 偵測距離 (瞳距)
             if (enableTooCloseWarning) {
-                val normalizedDist = computeNormalizedIrisDistance(it, imageWidth)
+                val normalizedDist = computeNormalizedIrisDistance(detectedFace, imageWidth)
                 if (normalizedDist != null && normalizedDist > irisDistanceThreshold) {
                     warnings.add(WarningState.TOO_CLOSE)
                 }
@@ -91,7 +96,7 @@ class PostureAndEyeDetector {
 
             // 2. 偵測瞇眼 (使用 ML Kit 分類結果)
             if (enableSquintWarning) {
-                val eyeOpenMin = computeEyeOpenMin(it)
+                val eyeOpenMin = computeEyeOpenMin(detectedFace)
                 if (eyeOpenMin != null && eyeOpenMin < eyeOpenThreshold) {
                     warnings.add(WarningState.SQUINTING)
                 }
@@ -100,7 +105,7 @@ class PostureAndEyeDetector {
 
         pose?.let {
             // 3. 偵測駝背 (檢查耳朵相對於肩膀的前傾角度)
-            if (enableSlouchWarning) {
+            if (enableSlouchWarning && hasUsableFace) {
                 val ratio = computePostureRatio(it)
                 if (ratio != null && ratio < slouchingPostureRatioThreshold) {
                     warnings.add(WarningState.SLOUCHING)
@@ -109,5 +114,14 @@ class PostureAndEyeDetector {
         }
 
         return warnings
+    }
+
+    private fun Face.hasUsableFaceData(): Boolean {
+        val leftEye = getLandmark(com.google.mlkit.vision.face.FaceLandmark.LEFT_EYE)?.position
+        val rightEye = getLandmark(com.google.mlkit.vision.face.FaceLandmark.RIGHT_EYE)?.position
+        return leftEye != null &&
+            rightEye != null &&
+            leftEyeOpenProbability != null &&
+            rightEyeOpenProbability != null
     }
 }

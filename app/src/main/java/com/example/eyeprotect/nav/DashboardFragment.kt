@@ -39,6 +39,8 @@ class DashboardFragment : Fragment() {
             setContent {
                 DashboardRoute(
                     onReCalibrate = {
+                        val prefs = requireContext().getSharedPreferences("eyeprotect_prefs", Context.MODE_PRIVATE)
+                        CalibrationPrefs.clearAllCalibration(prefs)
                         findNavController().navigate(com.example.eyeprotect.R.id.calibrationFragment)
                     }
                 )
@@ -69,7 +71,7 @@ private fun DashboardRoute(
                 lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
                     hasCameraPermission =
                         ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-                    hasCalibrated = CalibrationPrefs.hasValidCalibration(prefs)
+                    hasCalibrated = CalibrationPrefs.hasCompleteCalibrationSet(prefs)
                     isServiceEnabled = isAccessibilityServiceEnabled(context, EyeHealthAccessibilityService::class.java)
                 }
             }

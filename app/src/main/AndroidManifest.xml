@@ -66,6 +66,11 @@
             android:exported="false"
             android:foregroundServiceType="camera" />
 
+        <receiver
+            android:name="com.example.eyeprotect.monitoring.MonitoringRestartReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
         <service
             android:name="com.example.eyeprotect.monitoring.EyeExerciseOverlayService"
             android:exported="false" />

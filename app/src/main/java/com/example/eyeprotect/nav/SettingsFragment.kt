@@ -73,6 +73,7 @@ import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.fragment.findNavController
+import com.example.eyeprotect.CalibrationPrefs
 import com.example.eyeprotect.PreferenceKeys
 import com.example.eyeprotect.R
 import com.example.eyeprotect.monitoring.NightShiftMode
@@ -107,6 +108,8 @@ class SettingsFragment : Fragment() {
                         SettingsScreen(
                             viewModel = viewModel,
                             onOpenCalibration = {
+                                val prefs = requireContext().getSharedPreferences(PreferenceKeys.PREFS_NAME, Context.MODE_PRIVATE)
+                                CalibrationPrefs.clearAllCalibration(prefs)
                                 findNavController().navigate(R.id.calibrationFragment)
                             }
                         )

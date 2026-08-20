@@ -42,7 +42,7 @@ fun AppNavigation(
         )
     }
     var hasCalibrated by remember {
-        mutableStateOf(CalibrationPrefs.hasValidCalibration(prefs))
+        mutableStateOf(CalibrationPrefs.hasCompleteCalibrationSet(prefs))
     }
     var isServiceEnabled by remember { mutableStateOf(false) }
     var currentStage by remember {
@@ -59,7 +59,7 @@ fun AppNavigation(
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             hasCameraPermission =
                 ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-            hasCalibrated = CalibrationPrefs.hasValidCalibration(prefs)
+            hasCalibrated = CalibrationPrefs.hasCompleteCalibrationSet(prefs)
             isServiceEnabled = isAccessibilityServiceEnabled(context, EyeHealthAccessibilityService::class.java)
 
             if (currentStage != AppStage.CALIBRATION || hasCalibrated) {
@@ -100,7 +100,11 @@ fun AppNavigation(
                 isServiceEnabled = isServiceEnabled,
                 hasCameraPermission = hasCameraPermission,
                 hasCalibrated = hasCalibrated,
-                onReCalibrate = { currentStage = AppStage.CALIBRATION }
+                onReCalibrate = {
+                    CalibrationPrefs.clearAllCalibration(prefs)
+                    hasCalibrated = false
+                    currentStage = AppStage.CALIBRATION
+                }
             )
         }
     }
