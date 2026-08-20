@@ -20,7 +20,7 @@ object LiveMonitoringStore {
         )
         updateSessionSummaryFromWarnings(
             prefs = prefs,
-            detectedWarningsMask = detectedWarningsMask,
+            warningsMask = warningsMask,
             nowEpochMs = System.currentTimeMillis(),
         )
         val editor = prefs.edit()
@@ -32,13 +32,17 @@ object LiveMonitoringStore {
         if (metrics.isCameraFrame) {
             editor
                 .putFloat(EyeHealthAccessibilityService.PREF_LIVE_IRIS_NORM, metrics.irisNorm ?: Float.NaN)
+                .putFloat(EyeHealthAccessibilityService.PREF_LIVE_LEFT_EYE_OPEN, metrics.leftEyeOpen ?: Float.NaN)
+                .putFloat(EyeHealthAccessibilityService.PREF_LIVE_RIGHT_EYE_OPEN, metrics.rightEyeOpen ?: Float.NaN)
                 .putFloat(EyeHealthAccessibilityService.PREF_LIVE_EYE_OPEN_MIN, metrics.eyeOpenMin ?: Float.NaN)
                 .putFloat(EyeHealthAccessibilityService.PREF_LIVE_SLOUCH_SCORE, metrics.slouchScore ?: Float.NaN)
+                .putFloat(EyeHealthAccessibilityService.PREF_LIVE_FACE_PITCH_DEG, metrics.facePitchDeg ?: Float.NaN)
                 .putBoolean(EyeHealthAccessibilityService.PREF_LIVE_FACE_DETECTED, metrics.faceDetected)
                 .putBoolean(EyeHealthAccessibilityService.PREF_LIVE_POSE_DETECTED, metrics.poseDetected)
                 .putBoolean(EyeHealthAccessibilityService.PREF_LIVE_FACE_ERROR, metrics.faceError)
                 .putBoolean(EyeHealthAccessibilityService.PREF_LIVE_POSE_ERROR, metrics.poseError)
         }
+        metrics.squintHoldMs?.let { editor.putLong(EyeHealthAccessibilityService.PREF_LIVE_SQUINT_HOLD_MS, it) }
         metrics.pitchDeg?.let { editor.putFloat(EyeHealthAccessibilityService.PREF_LIVE_PITCH_DEG, it) }
         metrics.rollDeg?.let { editor.putFloat(EyeHealthAccessibilityService.PREF_LIVE_ROLL_DEG, it) }
         metrics.tiltDeg?.let { editor.putFloat(EyeHealthAccessibilityService.PREF_LIVE_TILT_DEG, it) }
@@ -52,13 +56,17 @@ object LiveMonitoringStore {
             putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_FACE_SEEN_UPTIME_MS, metrics.lastFaceDetectedTime)
             if (metrics.isCameraFrame) {
                 putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_IRIS_NORM, metrics.irisNorm ?: Float.NaN)
+                putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_LEFT_EYE_OPEN, metrics.leftEyeOpen ?: Float.NaN)
+                putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_RIGHT_EYE_OPEN, metrics.rightEyeOpen ?: Float.NaN)
                 putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_EYE_OPEN_MIN, metrics.eyeOpenMin ?: Float.NaN)
                 putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_SLOUCH_SCORE, metrics.slouchScore ?: Float.NaN)
+                putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_FACE_PITCH_DEG, metrics.facePitchDeg ?: Float.NaN)
                 putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_FACE_DETECTED, metrics.faceDetected)
                 putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_POSE_DETECTED, metrics.poseDetected)
                 putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_FACE_ERROR, metrics.faceError)
                 putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_POSE_ERROR, metrics.poseError)
             }
+            metrics.squintHoldMs?.let { putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_SQUINT_HOLD_MS, it) }
             metrics.pitchDeg?.let { putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_PITCH_DEG, it) }
             metrics.rollDeg?.let { putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_ROLL_DEG, it) }
             metrics.tiltDeg?.let { putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_TILT_DEG, it) }
@@ -76,8 +84,12 @@ object LiveMonitoringStore {
             .putBoolean(EyeHealthAccessibilityService.PREF_LIVE_IS_CAMERA_FRAME, true)
             .putLong(EyeHealthAccessibilityService.PREF_LIVE_FACE_SEEN_UPTIME_MS, 0L)
             .putFloat(EyeHealthAccessibilityService.PREF_LIVE_IRIS_NORM, Float.NaN)
+            .putFloat(EyeHealthAccessibilityService.PREF_LIVE_LEFT_EYE_OPEN, Float.NaN)
+            .putFloat(EyeHealthAccessibilityService.PREF_LIVE_RIGHT_EYE_OPEN, Float.NaN)
             .putFloat(EyeHealthAccessibilityService.PREF_LIVE_EYE_OPEN_MIN, Float.NaN)
             .putFloat(EyeHealthAccessibilityService.PREF_LIVE_SLOUCH_SCORE, Float.NaN)
+            .putFloat(EyeHealthAccessibilityService.PREF_LIVE_FACE_PITCH_DEG, Float.NaN)
+            .putLong(EyeHealthAccessibilityService.PREF_LIVE_SQUINT_HOLD_MS, 0L)
             .apply()
 
         val intent = Intent(EyeHealthAccessibilityService.ACTION_LIVE_METRICS).apply {
@@ -87,8 +99,12 @@ object LiveMonitoringStore {
             putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_IS_CAMERA_FRAME, true)
             putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_FACE_SEEN_UPTIME_MS, 0L)
             putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_IRIS_NORM, Float.NaN)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_LEFT_EYE_OPEN, Float.NaN)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_RIGHT_EYE_OPEN, Float.NaN)
             putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_EYE_OPEN_MIN, Float.NaN)
             putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_SLOUCH_SCORE, Float.NaN)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_FACE_PITCH_DEG, Float.NaN)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_SQUINT_HOLD_MS, 0L)
         }
         context.sendBroadcast(intent)
     }
@@ -126,11 +142,11 @@ object LiveMonitoringStore {
 
     private fun updateSessionSummaryFromWarnings(
         prefs: android.content.SharedPreferences,
-        detectedWarningsMask: Int,
+        warningsMask: Int,
         nowEpochMs: Long,
     ) {
         val previousMask = prefs.getInt(PREF_SESSION_TRACKING_WARNINGS_MASK, 0) and 0x7
-        val currentMask = detectedWarningsMask and 0x7
+        val currentMask = warningsMask and 0x7
         val editor = prefs.edit()
 
         processWarningBit(

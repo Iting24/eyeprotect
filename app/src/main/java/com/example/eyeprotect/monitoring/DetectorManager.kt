@@ -74,7 +74,10 @@ class DetectorManager(
     private var lastTiltFromHorizontalDegrees = Double.NaN
     private var lyingCandidateStartTimestamp = 0L
     private var isLyingActive = false
-    private var squintWarningStreak = 0
+    private var squintCandidateStartTimestamp = 0L
+    private var smoothedFacePitchDegrees = Float.NaN
+    private var baselineFacePitchDegrees = Float.NaN
+    private var isLowHeadActive = false
     private var slouchWarningStreak = 0
     private var lastDetectedWarnings: Set<WarningState> = emptySet()
     private var lastPublishedWarnings: Set<WarningState> = emptySet()
@@ -127,6 +130,11 @@ class DetectorManager(
         isRunning = true
         lastDetectedWarnings = emptySet()
         lastPublishedWarnings = emptySet()
+        squintCandidateStartTimestamp = 0L
+        smoothedFacePitchDegrees = Float.NaN
+        baselineFacePitchDegrees = Float.NaN
+        isLowHeadActive = false
+        slouchWarningStreak = 0
         lifecycleRegistry.currentState = Lifecycle.State.STARTED
         syncThresholdsForOrientation(context.resources.configuration.orientation)
         startOrientationTracking()
@@ -143,6 +151,11 @@ class DetectorManager(
         cameraExecutor.shutdown()
         lastDetectedWarnings = emptySet()
         lastPublishedWarnings = emptySet()
+        squintCandidateStartTimestamp = 0L
+        smoothedFacePitchDegrees = Float.NaN
+        baselineFacePitchDegrees = Float.NaN
+        isLowHeadActive = false
+        slouchWarningStreak = 0
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
     }
 
@@ -424,19 +437,23 @@ class DetectorManager(
             )
 
             val detectedWarningsWithLying = if (isLyingActive) warnings + WarningState.LYING else warnings
-            val activatedDetectedWarnings = detectedWarningsWithLying - lastDetectedWarnings
-            val deactivatedDetectedWarnings = lastDetectedWarnings - detectedWarningsWithLying
-            activatedDetectedWarnings.forEach(onWarningActivated)
-            deactivatedDetectedWarnings.forEach(onWarningDeactivated)
             lastDetectedWarnings = detectedWarningsWithLying
 
-            val stableWarnings = stabilizeCameraWarnings(warnings)
+            val stableWarnings = stabilizeCameraWarnings(warnings, face)
             val warningsWithLying = if (isLyingActive) stableWarnings + WarningState.LYING else stableWarnings
+            val activatedPublishedWarnings = warningsWithLying - lastPublishedWarnings
+            val deactivatedPublishedWarnings = lastPublishedWarnings - warningsWithLying
+            activatedPublishedWarnings.forEach(onWarningActivated)
+            deactivatedPublishedWarnings.forEach(onWarningDeactivated)
             lastPublishedWarnings = warningsWithLying
             onWarnings(warningsWithLying)
             val irisNorm = face?.let { ruleDetector.computeNormalizedIrisDistance(it, detection.imageWidth) }
+            val leftEyeOpen = face?.leftEyeOpenProbability
+            val rightEyeOpen = face?.rightEyeOpenProbability
+            val facePitchDeg = if (!smoothedFacePitchDegrees.isNaN()) smoothedFacePitchDegrees else null
             val eyeOpenMin = face?.let { ruleDetector.computeEyeOpenMin(it) }
             val slouchScore = pose?.let { ruleDetector.computePostureRatio(it) }?.toFloat()
+            val squintHoldMs = face?.let(::currentSquintHoldMs)
 
             val warningsMask =
                 (if (warningsWithLying.contains(WarningState.TOO_CLOSE)) 1 else 0) or
@@ -462,11 +479,15 @@ class DetectorManager(
                     faceError = detection.faceError,
                     poseError = detection.poseError,
                     irisNorm = irisNorm,
+                    leftEyeOpen = leftEyeOpen,
+                    rightEyeOpen = rightEyeOpen,
                     eyeOpenMin = eyeOpenMin,
                     slouchScore = slouchScore,
+                    facePitchDeg = facePitchDeg,
                     pitchDeg = if (!lastPitchDegrees.isNaN()) lastPitchDegrees.toFloat() else null,
                     rollDeg = if (!lastRollDegrees.isNaN()) lastRollDegrees.toFloat() else null,
-                    tiltDeg = if (!lastTiltDegrees.isNaN()) lastTiltDegrees.toFloat() else null
+                    tiltDeg = if (!lastTiltDegrees.isNaN()) lastTiltDegrees.toFloat() else null,
+                    squintHoldMs = squintHoldMs
                 )
             )
         } catch (exception: RuntimeException) {
@@ -486,14 +507,61 @@ class DetectorManager(
         )
     }
 
-    private fun stabilizeCameraWarnings(warnings: Set<WarningState>): Set<WarningState> {
+    private fun stabilizeCameraWarnings(
+        warnings: Set<WarningState>,
+        face: com.google.mlkit.vision.face.Face?
+    ): Set<WarningState> {
         // Distance warning should be immediate; squint/slouch are noisier ML classifications.
-        squintWarningStreak = if (warnings.contains(WarningState.SQUINTING)) squintWarningStreak + 1 else 0
+        val now = SystemClock.uptimeMillis()
+        val leftEyeOpen = face?.leftEyeOpenProbability
+        val rightEyeOpen = face?.rightEyeOpenProbability
+        val faceHeadPitchAbs = face?.let { kotlin.math.abs(it.headEulerAngleX) }
+        val headYawAbs = kotlin.math.abs(face?.headEulerAngleY ?: 0f)
+        val headRollAbs = kotlin.math.abs(face?.headEulerAngleZ ?: 0f)
+        val eyeBrowGapRatio = face?.let(ruleDetector::computeEyeBrowGapRatio)
+        val lowHeadActive = updateLowHeadState(
+            facePitchAbs = faceHeadPitchAbs,
+            headYawAbs = headYawAbs,
+            headRollAbs = headRollAbs,
+            squintDetected = warnings.contains(WarningState.SQUINTING)
+        )
+        val adjustedSquintThreshold = adjustedSquintThreshold(
+            baseThreshold = ruleDetector.eyeOpenThreshold,
+            lowHeadActive = lowHeadActive,
+            headYawAbs = headYawAbs,
+            headRollAbs = headRollAbs,
+            eyeBrowGapRatio = eyeBrowGapRatio
+        )
+        val adjustedSquintHoldMs = adjustedSquintHoldMs(
+            lowHeadActive = lowHeadActive,
+            headYawAbs = headYawAbs,
+            headRollAbs = headRollAbs,
+            eyeBrowGapRatio = eyeBrowGapRatio
+        )
+        val squintDetected = ruleDetector.areBothEyesBelowThreshold(
+            leftEyeOpenProbability = leftEyeOpen,
+            rightEyeOpenProbability = rightEyeOpen,
+            threshold = adjustedSquintThreshold
+        )
+        if (squintDetected) {
+            if (squintCandidateStartTimestamp == 0L) squintCandidateStartTimestamp = now
+        } else {
+            squintCandidateStartTimestamp = 0L
+        }
         slouchWarningStreak = if (warnings.contains(WarningState.SLOUCHING)) slouchWarningStreak + 1 else 0
+
+        val publishSquintWarning = shouldPublishSquintWarning(
+            squintDetected = squintDetected,
+            candidateStartTimestamp = squintCandidateStartTimestamp,
+            now = now,
+            holdMs = adjustedSquintHoldMs
+        )
 
         return buildSet {
             if (warnings.contains(WarningState.TOO_CLOSE)) add(WarningState.TOO_CLOSE)
-            if (squintWarningStreak >= CAMERA_WARNING_CONFIRM_FRAMES) add(WarningState.SQUINTING)
+            if (publishSquintWarning) {
+                add(WarningState.SQUINTING)
+            }
             if (slouchWarningStreak >= CAMERA_WARNING_CONFIRM_FRAMES) add(WarningState.SLOUCHING)
         }
     }
@@ -552,6 +620,45 @@ class DetectorManager(
         )
     }
 
+    private fun currentSquintHoldMs(face: com.google.mlkit.vision.face.Face): Long {
+        val headYawAbs = kotlin.math.abs(face.headEulerAngleY)
+        val headRollAbs = kotlin.math.abs(face.headEulerAngleZ)
+        val eyeBrowGapRatio = ruleDetector.computeEyeBrowGapRatio(face)
+        return adjustedSquintHoldMs(
+            lowHeadActive = isLowHeadActive,
+            headYawAbs = headYawAbs,
+            headRollAbs = headRollAbs,
+            eyeBrowGapRatio = eyeBrowGapRatio
+        )
+    }
+
+    private fun updateLowHeadState(
+        facePitchAbs: Float?,
+        headYawAbs: Float,
+        headRollAbs: Float,
+        squintDetected: Boolean
+    ): Boolean {
+        smoothedFacePitchDegrees = smoothFacePitch(smoothedFacePitchDegrees, facePitchAbs)
+        val smoothedPitch = smoothedFacePitchDegrees
+        if (smoothedPitch.isNaN()) {
+            isLowHeadActive = false
+            return false
+        }
+
+        val baselineLocked = squintDetected || headYawAbs >= SIDE_HEAD_YAW_DEG || headRollAbs >= TILT_HEAD_ROLL_DEG
+        baselineFacePitchDegrees = updateFacePitchBaseline(
+            previousBaseline = baselineFacePitchDegrees,
+            smoothedFacePitch = smoothedPitch,
+            allowUpdate = !baselineLocked && !isLowHeadActive
+        )
+        isLowHeadActive = evaluateLowHeadState(
+            smoothedFacePitch = smoothedPitch,
+            baselineFacePitch = baselineFacePitchDegrees,
+            wasActive = isLowHeadActive
+        )
+        return isLowHeadActive
+    }
+
     private fun currentDisplayRotation(): Int {
         val contextDisplayRotation = runCatching { context.display?.rotation }.getOrNull()
         if (contextDisplayRotation != null) return contextDisplayRotation
@@ -590,7 +697,6 @@ class DetectorManager(
         val faceError: Boolean,
         val poseError: Boolean
     )
-
     private inner class FrameAnalyzer(
         private val onMetrics: (MonitoringMetrics) -> Unit,
         private val onWarnings: (Set<WarningState>) -> Unit,
@@ -610,6 +716,20 @@ class DetectorManager(
         private const val SENSOR_METRICS_INTERVAL_MS = 500L
         private const val LYING_HOLD_MS = 4000L
         private const val CAMERA_WARNING_CONFIRM_FRAMES = 2
+        internal const val SQUINT_WARNING_HOLD_MS = 3000L
+        internal const val LOW_HEAD_SQUINT_HOLD_MS = 5000L
+        internal const val FACE_PITCH_SMOOTHING_ALPHA = 0.25f
+        internal const val FACE_PITCH_BASELINE_ALPHA = 0.08f
+        internal const val LOW_HEAD_ENTER_DELTA_DEG = 4f
+        internal const val LOW_HEAD_EXIT_DELTA_DEG = 2f
+        internal const val LOW_HEAD_THRESHOLD_SCALE = 0.8f
+        internal const val SIDE_HEAD_YAW_DEG = 15f
+        internal const val TILT_HEAD_ROLL_DEG = 12f
+        internal const val OFF_AXIS_SQUINT_HOLD_MS = 6000L
+        internal const val OFF_AXIS_THRESHOLD_SCALE = 0.7f
+        internal const val SMALL_BROW_GAP_RATIO = 0.055f
+        internal const val SMALL_BROW_GAP_HOLD_MS = 6000L
+        internal const val SMALL_BROW_GAP_THRESHOLD_SCALE = 0.7f
         private const val LYING_PITCH_DEG = 65.0
         private const val LYING_ROLL_DEG = 65.0
         private const val LYING_SIDE_MIN_PITCH_DEG = 35.0
@@ -618,5 +738,72 @@ class DetectorManager(
         private const val LYING_MAX_GYRO_MAG = 3.0
         private const val LYING_FACE_RECENCY_MS = 5000L
         private val FALLBACK_ROTATION_DEGREES = listOf(0, 90, 270, 180)
+
+        internal fun shouldPublishSquintWarning(
+            squintDetected: Boolean,
+            candidateStartTimestamp: Long,
+            now: Long,
+            holdMs: Long = SQUINT_WARNING_HOLD_MS
+        ): Boolean {
+            if (!squintDetected || candidateStartTimestamp == 0L) return false
+            return now - candidateStartTimestamp >= holdMs
+        }
+
+        internal fun adjustedSquintThreshold(
+            baseThreshold: Float,
+            lowHeadActive: Boolean,
+            headYawAbs: Float,
+            headRollAbs: Float,
+            eyeBrowGapRatio: Float?
+        ): Float {
+            var adjusted = baseThreshold
+            if (lowHeadActive) adjusted *= LOW_HEAD_THRESHOLD_SCALE
+            if (headYawAbs >= SIDE_HEAD_YAW_DEG || headRollAbs >= TILT_HEAD_ROLL_DEG) adjusted *= OFF_AXIS_THRESHOLD_SCALE
+            if (eyeBrowGapRatio != null && eyeBrowGapRatio <= SMALL_BROW_GAP_RATIO) adjusted *= SMALL_BROW_GAP_THRESHOLD_SCALE
+            return adjusted.coerceIn(0.10f, 0.90f)
+        }
+
+        internal fun adjustedSquintHoldMs(
+            lowHeadActive: Boolean,
+            headYawAbs: Float,
+            headRollAbs: Float,
+            eyeBrowGapRatio: Float?
+        ): Long {
+            var holdMs = SQUINT_WARNING_HOLD_MS
+            if (lowHeadActive) holdMs = maxOf(holdMs, LOW_HEAD_SQUINT_HOLD_MS)
+            if (headYawAbs >= SIDE_HEAD_YAW_DEG || headRollAbs >= TILT_HEAD_ROLL_DEG) holdMs = maxOf(holdMs, OFF_AXIS_SQUINT_HOLD_MS)
+            if (eyeBrowGapRatio != null && eyeBrowGapRatio <= SMALL_BROW_GAP_RATIO) {
+                holdMs = maxOf(holdMs, SMALL_BROW_GAP_HOLD_MS)
+            }
+            return holdMs
+        }
+
+        internal fun smoothFacePitch(previousSmoothed: Float, facePitchAbs: Float?): Float {
+            if (facePitchAbs == null) return previousSmoothed
+            if (previousSmoothed.isNaN()) return facePitchAbs
+            return previousSmoothed + FACE_PITCH_SMOOTHING_ALPHA * (facePitchAbs - previousSmoothed)
+        }
+
+        internal fun updateFacePitchBaseline(
+            previousBaseline: Float,
+            smoothedFacePitch: Float,
+            allowUpdate: Boolean
+        ): Float {
+            if (smoothedFacePitch.isNaN()) return previousBaseline
+            if (previousBaseline.isNaN()) return smoothedFacePitch
+            if (!allowUpdate) return previousBaseline
+            return previousBaseline + FACE_PITCH_BASELINE_ALPHA * (smoothedFacePitch - previousBaseline)
+        }
+
+        internal fun evaluateLowHeadState(
+            smoothedFacePitch: Float,
+            baselineFacePitch: Float,
+            wasActive: Boolean
+        ): Boolean {
+            if (smoothedFacePitch.isNaN() || baselineFacePitch.isNaN()) return false
+            val enterThreshold = baselineFacePitch + LOW_HEAD_ENTER_DELTA_DEG
+            val exitThreshold = baselineFacePitch + LOW_HEAD_EXIT_DELTA_DEG
+            return if (wasActive) smoothedFacePitch >= exitThreshold else smoothedFacePitch >= enterThreshold
+        }
     }
 }
