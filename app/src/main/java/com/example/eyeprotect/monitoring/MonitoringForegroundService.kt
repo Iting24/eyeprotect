@@ -113,6 +113,7 @@ class MonitoringForegroundService : Service() {
             ruleDetector = ruleDetector
         ).also { manager ->
             reportRepo.startSession()
+            LiveMonitoringStore.publishStarting(this)
             manager.start(
                 onMetrics = { metrics ->
                     repo.updateMetrics(metrics)

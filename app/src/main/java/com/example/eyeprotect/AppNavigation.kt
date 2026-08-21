@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import com.example.eyeprotect.monitoring.MonitoringForegroundService
 import com.google.mlkit.vision.face.FaceDetector
 import com.google.mlkit.vision.pose.PoseDetector
 
@@ -101,6 +102,12 @@ fun AppNavigation(
                 hasCameraPermission = hasCameraPermission,
                 hasCalibrated = hasCalibrated,
                 onReCalibrate = {
+                    if (prefs.getBoolean(EyeHealthAccessibilityService.PREF_MONITORING_ENABLED, false)) {
+                        MonitoringForegroundService.stop(context)
+                    }
+                    prefs.edit()
+                        .putBoolean(EyeHealthAccessibilityService.PREF_MONITORING_ENABLED, false)
+                        .apply()
                     CalibrationPrefs.clearAllCalibration(prefs)
                     hasCalibrated = false
                     currentStage = AppStage.CALIBRATION

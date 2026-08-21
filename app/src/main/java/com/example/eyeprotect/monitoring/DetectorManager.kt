@@ -717,7 +717,7 @@ class DetectorManager(
         private const val LYING_HOLD_MS = 4000L
         private const val CAMERA_WARNING_CONFIRM_FRAMES = 2
         internal const val SQUINT_WARNING_HOLD_MS = 3000L
-        internal const val LOW_HEAD_SQUINT_HOLD_MS = 5000L
+        internal const val LOW_HEAD_SQUINT_HOLD_MS = 3000L
         internal const val FACE_PITCH_SMOOTHING_ALPHA = 0.25f
         internal const val FACE_PITCH_BASELINE_ALPHA = 0.08f
         internal const val LOW_HEAD_ENTER_DELTA_DEG = 4f

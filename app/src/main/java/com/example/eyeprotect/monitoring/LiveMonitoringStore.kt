@@ -6,6 +6,55 @@ import com.example.eyeprotect.EyeHealthAccessibilityService
 
 object LiveMonitoringStore {
 
+    fun publishStarting(context: Context) {
+        val nowUptimeMs = android.os.SystemClock.uptimeMillis()
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit()
+            .putLong(EyeHealthAccessibilityService.PREF_LIVE_TS, nowUptimeMs)
+            .putInt(EyeHealthAccessibilityService.PREF_LIVE_WARNINGS_MASK, 0)
+            .putInt(PREF_LAST_DETECTED_WARNINGS_MASK, 0)
+            .putBoolean(EyeHealthAccessibilityService.PREF_LIVE_IS_CAMERA_FRAME, false)
+            .putLong(EyeHealthAccessibilityService.PREF_LIVE_FACE_SEEN_UPTIME_MS, 0L)
+            .putBoolean(EyeHealthAccessibilityService.PREF_LIVE_FACE_DETECTED, false)
+            .putBoolean(EyeHealthAccessibilityService.PREF_LIVE_POSE_DETECTED, false)
+            .putBoolean(EyeHealthAccessibilityService.PREF_LIVE_FACE_ERROR, false)
+            .putBoolean(EyeHealthAccessibilityService.PREF_LIVE_POSE_ERROR, false)
+            .putFloat(EyeHealthAccessibilityService.PREF_LIVE_IRIS_NORM, Float.NaN)
+            .putFloat(EyeHealthAccessibilityService.PREF_LIVE_LEFT_EYE_OPEN, Float.NaN)
+            .putFloat(EyeHealthAccessibilityService.PREF_LIVE_RIGHT_EYE_OPEN, Float.NaN)
+            .putFloat(EyeHealthAccessibilityService.PREF_LIVE_EYE_OPEN_MIN, Float.NaN)
+            .putFloat(EyeHealthAccessibilityService.PREF_LIVE_SLOUCH_SCORE, Float.NaN)
+            .putFloat(EyeHealthAccessibilityService.PREF_LIVE_FACE_PITCH_DEG, Float.NaN)
+            .putFloat(EyeHealthAccessibilityService.PREF_LIVE_PITCH_DEG, Float.NaN)
+            .putFloat(EyeHealthAccessibilityService.PREF_LIVE_ROLL_DEG, Float.NaN)
+            .putFloat(EyeHealthAccessibilityService.PREF_LIVE_TILT_DEG, Float.NaN)
+            .putLong(EyeHealthAccessibilityService.PREF_LIVE_SQUINT_HOLD_MS, 0L)
+            .apply()
+
+        val intent = Intent(EyeHealthAccessibilityService.ACTION_LIVE_METRICS).apply {
+            setPackage(context.packageName)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_TS, nowUptimeMs)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_WARNINGS_MASK, 0)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_IS_CAMERA_FRAME, false)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_FACE_SEEN_UPTIME_MS, 0L)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_FACE_DETECTED, false)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_POSE_DETECTED, false)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_FACE_ERROR, false)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_POSE_ERROR, false)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_IRIS_NORM, Float.NaN)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_LEFT_EYE_OPEN, Float.NaN)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_RIGHT_EYE_OPEN, Float.NaN)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_EYE_OPEN_MIN, Float.NaN)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_SLOUCH_SCORE, Float.NaN)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_FACE_PITCH_DEG, Float.NaN)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_PITCH_DEG, Float.NaN)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_ROLL_DEG, Float.NaN)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_TILT_DEG, Float.NaN)
+            putExtra(EyeHealthAccessibilityService.EXTRA_LIVE_SQUINT_HOLD_MS, 0L)
+        }
+        context.sendBroadcast(intent)
+    }
+
     fun publishMetrics(context: Context, metrics: MonitoringMetrics) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val warningsMask = mergeWarningsMask(

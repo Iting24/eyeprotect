@@ -372,6 +372,14 @@ fun DashboardScreen(
                 context.sendBroadcast(intent)
             }
         }
+        val handleReCalibrate = onReCalibrate?.let {
+            {
+                if (monitoringEnabled) {
+                    setMonitoringEnabled(false)
+                }
+                it()
+            }
+        }
         val requestNotificationPermission = {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -394,6 +402,7 @@ fun DashboardScreen(
             warningsMask,
             liveTs,
             faceSeenUptimeMs,
+            lastWasCameraFrame,
             faceDetected,
             poseDetected,
             faceError,
@@ -407,6 +416,7 @@ fun DashboardScreen(
                 warningsMask = warningsMask,
                 liveTsUptimeMs = liveTs,
                 faceSeenUptimeMs = faceSeenUptimeMs,
+                lastWasCameraFrame = lastWasCameraFrame,
                 faceDetected = faceDetected,
                 poseDetected = poseDetected,
                 faceError = faceError,
@@ -522,7 +532,7 @@ fun DashboardScreen(
                                         monitoringEnabled = if (monitoringReady) monitoringEnabled else false,
                                         onRequestCamera = { permissionLauncher.launch(Manifest.permission.CAMERA) },
                                         onRequestNotifications = requestNotificationPermission,
-                                        onOpenCalibration = onReCalibrate,
+                                        onOpenCalibration = handleReCalibrate,
                                         onOpenAccessibilitySettings = {
                                             val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                                             context.startActivity(intent)
@@ -625,7 +635,7 @@ fun DashboardScreen(
                                     monitoringEnabled = if (monitoringReady) monitoringEnabled else false,
                                     onRequestCamera = { permissionLauncher.launch(Manifest.permission.CAMERA) },
                                     onRequestNotifications = requestNotificationPermission,
-                                    onOpenCalibration = onReCalibrate,
+                                    onOpenCalibration = handleReCalibrate,
                                     onOpenAccessibilitySettings = {
                                         val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                                         context.startActivity(intent)
@@ -743,6 +753,27 @@ private data class DashboardHeroState(
     val warning: Boolean
 )
 
+private fun isMonitoringStarting(
+    monitoringEnabled: Boolean,
+    ageSec: Int?,
+    faceSeenUptimeMs: Long,
+    lastWasCameraFrame: Boolean,
+    faceDetected: Boolean,
+    poseDetected: Boolean,
+    faceError: Boolean,
+    poseError: Boolean
+): Boolean {
+    return monitoringEnabled &&
+        ageSec != null &&
+        ageSec < 6 &&
+        faceSeenUptimeMs <= 0L &&
+        !lastWasCameraFrame &&
+        !faceDetected &&
+        !poseDetected &&
+        !faceError &&
+        !poseError
+}
+
 private fun buildDashboardHeroState(
     monitoringReady: Boolean,
     monitoringEnabled: Boolean,
@@ -750,6 +781,7 @@ private fun buildDashboardHeroState(
     warningsMask: Int,
     liveTsUptimeMs: Long,
     faceSeenUptimeMs: Long,
+    lastWasCameraFrame: Boolean,
     faceDetected: Boolean,
     poseDetected: Boolean,
     faceError: Boolean,
@@ -759,11 +791,22 @@ private fun buildDashboardHeroState(
     val ageSec = if (liveTsUptimeMs > 0L) ((nowUptimeMs - liveTsUptimeMs).coerceAtLeast(0L) / 1000L).toInt() else null
     val faceAgeSec =
         if (faceSeenUptimeMs > 0L) ((nowUptimeMs - faceSeenUptimeMs).coerceAtLeast(0L) / 1000L).toInt() else null
-    val stale = monitoringEnabled && ageSec != null && ageSec >= 6
+    val starting = isMonitoringStarting(
+        monitoringEnabled = monitoringEnabled,
+        ageSec = ageSec,
+        faceSeenUptimeMs = faceSeenUptimeMs,
+        lastWasCameraFrame = lastWasCameraFrame,
+        faceDetected = faceDetected,
+        poseDetected = poseDetected,
+        faceError = faceError,
+        poseError = poseError
+    )
+    val stale = monitoringEnabled && !starting && ageSec != null && ageSec >= 6
     val warningCount = listOf(1, 2, 4, 8).count { warningsMask and it != 0 }
     val score = when {
         !monitoringReady -> 0
         !monitoringEnabled -> 20
+        starting -> 55
         stale -> 35
         else -> (100 - warningCount * 18 - if (!alertsReady) 8 else 0).coerceIn(15, 100)
     }
@@ -771,6 +814,7 @@ private fun buildDashboardHeroState(
         !monitoringReady -> "先完成設定"
         !monitoringEnabled -> "監測已暫停"
         faceError || poseError -> "偵測器回報錯誤"
+        starting -> "啟動監測中"
         stale -> "資料可能中斷"
         !faceDetected -> "等待臉部入鏡"
         warningCount > 0 -> "需要注意"
@@ -781,6 +825,7 @@ private fun buildDashboardHeroState(
         !monitoringReady -> "相機權限與個人校正完成後，首頁才會開始顯示可靠數據。"
         !monitoringEnabled -> "開啟監測後，前景服務會開始收集即時資料。"
         faceError || poseError -> detectorErrorText(faceError, poseError)
+        starting -> "監測服務已啟動，正在等待第一筆相機資料。"
         stale -> "最近沒有收到新數據，請檢查前景服務、相機或省電限制。"
         warningCount > 0 -> activeWarningText(warningsMask)
         !faceDetected -> "請讓臉部進入前鏡頭畫面，距離與睜眼指標才會更新。"
@@ -2232,10 +2277,21 @@ private fun ExpandableMonitoringStatusCard(
 
     val ageSec = if (liveTsUptimeMs > 0L) ((nowUptime - liveTsUptimeMs).coerceAtLeast(0L) / 1000L).toInt() else null
     val faceAgeSec = if (faceSeenUptimeMs > 0L) ((nowUptime - faceSeenUptimeMs).coerceAtLeast(0L) / 1000L).toInt() else null
-    val stale = ageSec != null && ageSec >= 6
+    val starting = isMonitoringStarting(
+        monitoringEnabled = monitoringEnabled,
+        ageSec = ageSec,
+        faceSeenUptimeMs = faceSeenUptimeMs,
+        lastWasCameraFrame = lastWasCameraFrame,
+        faceDetected = faceDetected,
+        poseDetected = poseDetected,
+        faceError = faceError,
+        poseError = poseError
+    )
+    val stale = !starting && ageSec != null && ageSec >= 6
     val title = when {
         !monitoringEnabled -> "監測已暫停"
         faceError || poseError -> "偵測器錯誤"
+        starting -> "啟動監測中"
         stale -> "資料未更新"
         !lastWasCameraFrame -> "感測器更新中"
         !alertsReady -> "收集中，提醒未完整啟用"
