@@ -69,7 +69,7 @@ object LiveMonitoringStore {
         )
         updateSessionSummaryFromWarnings(
             prefs = prefs,
-            warningsMask = warningsMask,
+            warningsMask = detectedWarningsMask,
             nowEpochMs = System.currentTimeMillis(),
         )
         val editor = prefs.edit()

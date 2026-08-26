@@ -30,6 +30,7 @@ import androidx.lifecycle.LifecycleRegistry
 import com.example.eyeprotect.monitoring.DeepNightLyingReminder
 import com.example.eyeprotect.monitoring.DetectorManager
 import com.example.eyeprotect.monitoring.LiveMonitoringStore
+import com.example.eyeprotect.monitoring.MonitoringForegroundService
 import com.example.eyeprotect.monitoring.MonitoringMetrics
 import com.google.mlkit.vision.face.FaceDetector
 import com.google.mlkit.vision.pose.PoseDetector
@@ -66,6 +67,7 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
     private var isTooCloseOverlayShown = false
     private var cachedChineseVoices: List<Voice> = emptyList()
     private var lastVoiceRefreshTimestamp = 0L
+    private var sessionStartedAtEpochMs = 0L
 
     private val thresholdUpdateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -131,6 +133,9 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
 
     private fun startMonitoringIfNeeded() {
         if (detectorManager != null) return
+        sessionStartedAtEpochMs = System.currentTimeMillis()
+        LiveMonitoringStore.resetSessionSummary(this, sessionStartedAtEpochMs)
+        LiveMonitoringStore.publishStarting(this)
 
         detectorManager = DetectorManager(
             context = this,
@@ -152,6 +157,7 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
     private fun stopMonitoring() {
         detectorManager?.stop()
         detectorManager = null
+        persistSessionDuration()
         ContextCompat.getMainExecutor(this).execute {
             hideScreenOverlay()
             isTooCloseOverlayShown = false
@@ -386,6 +392,16 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
             val channel = NotificationChannel(CHANNEL_ID, "VisionGuard Alerts", NotificationManager.IMPORTANCE_HIGH)
             (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)
         }
+    }
+
+    private fun persistSessionDuration() {
+        if (sessionStartedAtEpochMs <= 0L) return
+        val durationMs = (System.currentTimeMillis() - sessionStartedAtEpochMs).coerceAtLeast(0L)
+        prefs.edit()
+            .putLong(MonitoringForegroundService.PREF_LAST_SESSION_STARTED_AT, sessionStartedAtEpochMs)
+            .putLong(MonitoringForegroundService.PREF_LAST_SESSION_DURATION_MS, durationMs)
+            .apply()
+        sessionStartedAtEpochMs = 0L
     }
 
     private fun Intent.getFloatExtraOrNull(name: String): Float? =

@@ -60,6 +60,7 @@ class MonitoringForegroundService : Service() {
         detectorManager = null
         repo.setRunning(false)
         LiveMonitoringStore.publishPaused(this)
+        reportRepo.syncSessionSnapshot(readCurrentSessionSnapshot())
         persistSessionDuration()
         reportRepo.stopSession()
         scheduleRestartIfNeeded()
@@ -249,6 +250,18 @@ class MonitoringForegroundService : Service() {
             .putLong(PREF_LAST_SESSION_DURATION_MS, durationMs)
             .apply()
         sessionStartedAtEpochMs = 0L
+    }
+
+    private fun readCurrentSessionSnapshot(): MonitoringSessionSnapshot {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return MonitoringSessionSnapshot(
+            tooCloseReminderCount = prefs.getInt(PREF_LAST_TOO_CLOSE_COUNT, 0),
+            squintReminderCount = prefs.getInt(PREF_LAST_SQUINT_COUNT, 0),
+            slouchReminderCount = prefs.getInt(PREF_LAST_SLOUCH_COUNT, 0),
+            tooCloseCorrectionCount = prefs.getInt(PREF_LAST_TOO_CLOSE_CORRECTION_COUNT, 0),
+            squintCorrectionCount = prefs.getInt(PREF_LAST_SQUINT_CORRECTION_COUNT, 0),
+            slouchCorrectionCount = prefs.getInt(PREF_LAST_SLOUCH_CORRECTION_COUNT, 0),
+        )
     }
 
     private fun scheduleRestartIfNeeded() {
