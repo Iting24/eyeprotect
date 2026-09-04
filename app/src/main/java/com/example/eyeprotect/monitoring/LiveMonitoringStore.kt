@@ -69,7 +69,9 @@ object LiveMonitoringStore {
         )
         updateSessionSummaryFromWarnings(
             prefs = prefs,
-            warningsMask = detectedWarningsMask,
+            // Keep report counts aligned with the warnings users actually see.
+            // This includes the face-angle threshold adjustment and hold duration.
+            warningsMask = warningsMask,
             nowEpochMs = System.currentTimeMillis(),
         )
         val editor = prefs.edit()
@@ -256,7 +258,9 @@ object LiveMonitoringStore {
         if (wasActive && !isActive) {
             val remindedAt = prefs.getLong(reminderAtKey, 0L)
             if (remindedAt > 0L && nowEpochMs - remindedAt <= ImmediateCorrectionTracker.DEFAULT_CORRECTION_WINDOW_MS) {
-                editor.putInt(correctionCountKey, prefs.getInt(correctionCountKey, 0) + 1)
+                val reminderCount = prefs.getInt(reminderCountKey, 0)
+                val correctionCount = prefs.getInt(correctionCountKey, 0)
+                editor.putInt(correctionCountKey, (correctionCount + 1).coerceAtMost(reminderCount))
             }
             editor.putLong(reminderAtKey, 0L)
         }

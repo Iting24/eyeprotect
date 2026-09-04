@@ -15,11 +15,6 @@
         android:label="@string/nav_vision_tool" />
 
     <fragment
-        android:id="@+id/eyeExerciseFragment"
-        android:name="com.example.eyeprotect.nav.EyeExerciseFragment"
-        android:label="@string/nav_eye_exercise" />
-
-    <fragment
         android:id="@+id/acupressureFragment"
         android:name="com.example.eyeprotect.nav.AcupressureFragment"
         android:label="@string/nav_acupressure" />

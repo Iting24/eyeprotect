@@ -143,9 +143,6 @@ private fun SettingsScreen(
     var darkModeEnabled by remember {
         mutableStateOf(prefs.getBoolean(PreferenceKeys.PREF_DARK_MODE_ENABLED, false))
     }
-    var autoEyeExerciseEnabled by remember {
-        mutableStateOf(prefs.getBoolean(PreferenceKeys.PREF_AUTO_EYE_EXERCISE_ENABLED, false))
-    }
     var walkDetectionEnabled by remember {
         mutableStateOf(prefs.getBoolean(PreferenceKeys.PREF_WALK_DETECTION_ENABLED, false))
     }
@@ -294,31 +291,6 @@ private fun SettingsScreen(
                     style = MaterialTheme.typography.titleMedium,
                     color = cardTitleTextColor
                 )
-
-                FeatureToggleRow(
-                    title = stringResource(id = R.string.eye_settings_eye_exercise_title),
-                    description = stringResource(id = R.string.eye_settings_eye_exercise_desc),
-                    checked = autoEyeExerciseEnabled,
-                    beta = true,
-                    titleColor = cardTitleTextColor,
-                    descriptionColor = cardBodyTextColor,
-                    switchColors = switchColors,
-                    onCheckedChange = { enabled ->
-                        autoEyeExerciseEnabled = enabled
-                        prefs.edit().putBoolean(PreferenceKeys.PREF_AUTO_EYE_EXERCISE_ENABLED, enabled).apply()
-                    }
-                )
-
-                if (autoEyeExerciseEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(context)) {
-                    Text(
-                        text = stringResource(id = R.string.eye_settings_overlay_permission_hint),
-                        color = cardBodyTextColor,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    Button(onClick = { requestOverlayPermission(context) }) {
-                        Text(stringResource(id = R.string.eye_settings_open_overlay_permission))
-                    }
-                }
 
                 FeatureToggleRow(
                     title = stringResource(id = R.string.eye_settings_walk_detection_title),

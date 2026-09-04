@@ -245,11 +245,6 @@ private fun bottomNavItems(): List<BottomNavItem> {
             labelRes = R.string.nav_vision_tool
         ),
         BottomNavItem(
-            destinationId = R.id.eyeExerciseFragment,
-            iconRes = R.drawable.ic_nav_exercise,
-            labelRes = R.string.nav_eye_exercise
-        ),
-        BottomNavItem(
             destinationId = R.id.acupressureFragment,
             iconRes = R.drawable.ic_nav_acupressure,
             labelRes = R.string.nav_acupressure

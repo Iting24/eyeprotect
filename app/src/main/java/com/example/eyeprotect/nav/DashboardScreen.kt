@@ -112,15 +112,6 @@ fun DashboardScreen(viewModel: DashboardViewModel) {
             }
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(context)) {
-            Text(
-                text = "提示：眼球體操需要「在其他應用程式上層顯示」權限。",
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Button(onClick = { requestOverlayPermission(context) }) {
-                Text("前往開啟懸浮窗權限")
-            }
-        }
     }
 }
 

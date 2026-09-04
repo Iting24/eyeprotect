@@ -7,14 +7,12 @@
 
     <string name="nav_dashboard">首頁</string>
     <string name="nav_vision_tool">視覺工具</string>
-    <string name="nav_eye_exercise">眼球體操</string>
     <string name="nav_acupressure">穴道按摩</string>
     <string name="nav_leebulee">走路安全</string>
     <string name="nav_settings">護眼設定</string>
 
     <string name="title_dashboard">首頁</string>
     <string name="title_vision_tool">視覺工具</string>
-    <string name="title_eye_exercise">眼球體操</string>
     <string name="title_acupressure">穴道按摩</string>
     <string name="title_leebulee">EyeLeeBuLee</string>
     <string name="title_settings">護眼設定</string>
@@ -23,9 +21,6 @@
     <string name="vision_tool_permission_granted">相機權限已授權，這裡可以放入 Preview + AR 辨識流程。</string>
     <string name="request_camera_permission">請求相機權限</string>
 
-    <string name="eye_exercise_subtitle">Beta 功能：手動啟動體操（需要懸浮窗權限）</string>
-    <string name="eye_exercise_start">啟動體操</string>
-    <string name="eye_exercise_timer">定時：%1$ds</string>
     <string name="acupressure_subtitle">選擇穴道並進入 AR 按摩示範。</string>
     <string name="acupressure_start">選擇穴道按摩</string>
 
@@ -41,9 +36,6 @@
     <string name="eye_settings_section_features">護眼功能</string>
     <string name="eye_settings_dark_mode_title">柔和深色模式</string>
     <string name="eye_settings_dark_mode_desc">可在深色與淺色介面間手動切換，兩種配色都維持柔和閱讀感。</string>
-
-    <string name="eye_settings_eye_exercise_title">超時提醒眼睛體操 Beta</string>
-    <string name="eye_settings_eye_exercise_desc">目前先保留設定與手動入口；自動跳出流程仍在定義中。</string>
 
     <string name="eye_settings_walk_detection_title">GPS + 陀螺儀走路偵測 Beta</string>
     <string name="eye_settings_walk_detection_desc">功能方向已保留，提醒規則與感測器整合仍在補完。</string>

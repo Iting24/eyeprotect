@@ -72,10 +72,6 @@
             android:exported="false" />
 
         <service
-            android:name="com.example.eyeprotect.monitoring.EyeExerciseOverlayService"
-            android:exported="false" />
-
-        <service
             android:name="com.example.eyeprotect.eyeleebulee.service.LeeBuLeeMonitoringService"
             android:enabled="true"
             android:exported="false"

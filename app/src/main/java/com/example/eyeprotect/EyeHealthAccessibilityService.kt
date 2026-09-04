@@ -28,12 +28,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import com.example.eyeprotect.monitoring.DeepNightLyingReminder
-import com.example.eyeprotect.monitoring.DetectorManager
 import com.example.eyeprotect.monitoring.LiveMonitoringStore
 import com.example.eyeprotect.monitoring.MonitoringForegroundService
 import com.example.eyeprotect.monitoring.MonitoringMetrics
-import com.google.mlkit.vision.face.FaceDetector
-import com.google.mlkit.vision.pose.PoseDetector
 import dagger.hilt.android.AndroidEntryPoint
 import java.util.Locale
 import javax.inject.Inject
@@ -44,12 +41,6 @@ import kotlin.random.Random
 class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnInitListener, LifecycleOwner {
 
     @Inject
-    lateinit var faceDetector: FaceDetector
-
-    @Inject
-    lateinit var poseDetector: PoseDetector
-
-    @Inject
     lateinit var tts: TextToSpeech
 
     private lateinit var lifecycleRegistry: LifecycleRegistry
@@ -58,8 +49,6 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
 
     private lateinit var windowManager: WindowManager
     private var overlayView: View? = null
-    private var detectorManager: DetectorManager? = null
-
     private var isMonitoringEnabled = true
     private var lastTtsTimestamp = 0L
     private var lastVibrationTimestamp = 0L
@@ -67,24 +56,31 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
     private var isTooCloseOverlayShown = false
     private var cachedChineseVoices: List<Voice> = emptyList()
     private var lastVoiceRefreshTimestamp = 0L
-    private var sessionStartedAtEpochMs = 0L
-
-    private val thresholdUpdateReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            detectorManager?.setThresholds(
-                irisDistance = intent.getFloatExtraOrNull("irisDistance"),
-                eyeOpenThreshold = intent.getFloatExtraOrNull("eyeOpenThreshold"),
-                slouchRatioThreshold = intent.getFloatExtraOrNull("slouchAngleThreshold")?.toDouble()
-            )
-        }
-    }
-
     private val monitoringToggleReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action != ACTION_SET_MONITORING) return
             val enabled = intent.getBooleanExtra(EXTRA_MONITORING_ENABLED, true)
             prefs.edit().putBoolean(PREF_MONITORING_ENABLED, enabled).apply()
             applyMonitoringState(enabled)
+        }
+    }
+
+    private val liveMetricsReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action != ACTION_LIVE_METRICS) return
+            val warningsMask = intent.getIntExtra(EXTRA_LIVE_WARNINGS_MASK, 0)
+            handleWarningState(warningsFromMask(warningsMask))
+
+            if (prefs.getBoolean(PreferenceKeys.PREF_AUTO_NIGHT_MODE_ENABLED, false)) {
+                DeepNightLyingReminder.update(
+                    metrics = MonitoringMetrics(
+                        ts = intent.getLongExtra(EXTRA_LIVE_TS, SystemClock.uptimeMillis()),
+                        warningsMask = warningsMask,
+                        isLyingActive = warningsMask and WARNING_LYING != 0,
+                    ),
+                    tts = tts,
+                )
+            }
         }
     }
 
@@ -100,14 +96,14 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
 
         ContextCompat.registerReceiver(
             this,
-            thresholdUpdateReceiver,
-            IntentFilter(ACTION_UPDATE_THRESHOLDS),
+            monitoringToggleReceiver,
+            IntentFilter(ACTION_SET_MONITORING),
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
         ContextCompat.registerReceiver(
             this,
-            monitoringToggleReceiver,
-            IntentFilter(ACTION_SET_MONITORING),
+            liveMetricsReceiver,
+            IntentFilter(ACTION_LIVE_METRICS),
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
     }
@@ -123,41 +119,13 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
 
     private fun applyMonitoringState(enabled: Boolean) {
         isMonitoringEnabled = enabled
-        if (enabled) {
-            startMonitoringIfNeeded()
-        } else {
-            stopMonitoring()
+        if (!enabled) {
+            stopWarningPresentation()
             publishMonitoringPaused()
         }
     }
 
-    private fun startMonitoringIfNeeded() {
-        if (detectorManager != null) return
-        sessionStartedAtEpochMs = System.currentTimeMillis()
-        LiveMonitoringStore.resetSessionSummary(this, sessionStartedAtEpochMs)
-        LiveMonitoringStore.publishStarting(this)
-
-        detectorManager = DetectorManager(
-            context = this,
-            faceDetector = faceDetector,
-            poseDetector = poseDetector
-        ).apply {
-            setThresholds(
-                irisDistance = prefs.getFloatOrNull(KEY_IRIS_THRESHOLD),
-                eyeOpenThreshold = prefs.getFloatOrNull(KEY_EYE_OPEN_THRESHOLD),
-                slouchRatioThreshold = prefs.getFloatOrNull(KEY_SLOUCH_THRESHOLD)?.toDouble()
-            )
-            start(
-                onMetrics = { publishLiveMetrics(it) },
-                onWarnings = { handleWarningState(it) }
-            )
-        }
-    }
-
-    private fun stopMonitoring() {
-        detectorManager?.stop()
-        detectorManager = null
-        persistSessionDuration()
+    private fun stopWarningPresentation() {
         ContextCompat.getMainExecutor(this).execute {
             hideScreenOverlay()
             isTooCloseOverlayShown = false
@@ -166,18 +134,6 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
 
     private fun publishMonitoringPaused() {
         LiveMonitoringStore.publishPaused(this)
-    }
-
-    private fun publishLiveMetrics(metrics: MonitoringMetrics) {
-        if (!isMonitoringEnabled) return
-        LiveMonitoringStore.publishMetrics(this, metrics)
-
-        if (prefs.getBoolean(PreferenceKeys.PREF_AUTO_NIGHT_MODE_ENABLED, false)) {
-            DeepNightLyingReminder.update(
-                metrics = metrics,
-                tts = tts
-            )
-        }
     }
 
     private fun handleWarningState(warnings: Set<WarningState>) {
@@ -379,9 +335,9 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
-        stopMonitoring()
-        unregisterReceiver(thresholdUpdateReceiver)
+        stopWarningPresentation()
         unregisterReceiver(monitoringToggleReceiver)
+        unregisterReceiver(liveMetricsReceiver)
         tts.shutdown()
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
         super.onDestroy()
@@ -394,21 +350,12 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
         }
     }
 
-    private fun persistSessionDuration() {
-        if (sessionStartedAtEpochMs <= 0L) return
-        val durationMs = (System.currentTimeMillis() - sessionStartedAtEpochMs).coerceAtLeast(0L)
-        prefs.edit()
-            .putLong(MonitoringForegroundService.PREF_LAST_SESSION_STARTED_AT, sessionStartedAtEpochMs)
-            .putLong(MonitoringForegroundService.PREF_LAST_SESSION_DURATION_MS, durationMs)
-            .apply()
-        sessionStartedAtEpochMs = 0L
+    private fun warningsFromMask(mask: Int): Set<WarningState> = buildSet {
+        if (mask and WARNING_TOO_CLOSE != 0) add(WarningState.TOO_CLOSE)
+        if (mask and WARNING_SQUINTING != 0) add(WarningState.SQUINTING)
+        if (mask and WARNING_SLOUCHING != 0) add(WarningState.SLOUCHING)
+        if (mask and WARNING_LYING != 0) add(WarningState.LYING)
     }
-
-    private fun Intent.getFloatExtraOrNull(name: String): Float? =
-        if (hasExtra(name)) getFloatExtra(name, 0f) else null
-
-    private fun android.content.SharedPreferences.getFloatOrNull(name: String): Float? =
-        if (contains(name)) getFloat(name, 0f) else null
 
     companion object {
         const val ACTION_UPDATE_THRESHOLDS = "com.example.eyeprotect.UPDATE_THRESHOLDS"
@@ -423,9 +370,10 @@ class EyeHealthAccessibilityService : AccessibilityService(), TextToSpeech.OnIni
         private const val VIBRATION_COOLDOWN_MS = 3_000L
         private const val LYING_ALERT_COOLDOWN_MS = 20_000L
 
-        private const val KEY_IRIS_THRESHOLD = "iris_threshold"
-        private const val KEY_EYE_OPEN_THRESHOLD = "eye_open_threshold"
-        private const val KEY_SLOUCH_THRESHOLD = "slouch_angle_threshold"
+        private const val WARNING_TOO_CLOSE = 1
+        private const val WARNING_SQUINTING = 2
+        private const val WARNING_SLOUCHING = 4
+        private const val WARNING_LYING = 8
 
         const val PREF_MONITORING_ENABLED = "monitoring_enabled"
         const val PREF_LIVE_TS = "live_ts"

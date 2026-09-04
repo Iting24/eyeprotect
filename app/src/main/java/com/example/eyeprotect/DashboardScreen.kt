@@ -2185,7 +2185,7 @@ private fun summaryMetricIconStyle(metric: HistoryMetric): SummaryMetricIconStyl
         HistoryMetric.POSTURE -> SummaryMetricIconStyle(
             background = colors.metricPostureBg,
             tint = colors.metricPostureFg,
-            iconRes = R.drawable.ic_nav_exercise
+            iconRes = R.drawable.ic_nav_vision
         )
         HistoryMetric.LYING -> SummaryMetricIconStyle(
             background = colors.metricLyingBg,
