@@ -513,8 +513,6 @@ class DetectorManager(
     ): Set<WarningState> {
         // Distance warning should be immediate; squint/slouch are noisier ML classifications.
         val now = SystemClock.uptimeMillis()
-        val leftEyeOpen = face?.leftEyeOpenProbability
-        val rightEyeOpen = face?.rightEyeOpenProbability
         val faceHeadPitchAbs = face?.let { kotlin.math.abs(it.headEulerAngleX) }
         val headYawAbs = kotlin.math.abs(face?.headEulerAngleY ?: 0f)
         val headRollAbs = kotlin.math.abs(face?.headEulerAngleZ ?: 0f)
@@ -538,11 +536,9 @@ class DetectorManager(
             headRollAbs = headRollAbs,
             eyeBrowGapRatio = eyeBrowGapRatio
         )
-        val squintDetected = ruleDetector.areBothEyesBelowThreshold(
-            leftEyeOpenProbability = leftEyeOpen,
-            rightEyeOpenProbability = rightEyeOpen,
-            threshold = adjustedSquintThreshold
-        )
+        val squintDetected = face?.let {
+            ruleDetector.isSquinting(it, adjustedSquintThreshold)
+        } ?: false
         if (squintDetected) {
             if (squintCandidateStartTimestamp == 0L) squintCandidateStartTimestamp = now
         } else {

@@ -61,8 +61,12 @@ class PostureAndEyeDetector {
         return ((leftGap + rightGap) / 2f) / faceHeight
     }
 
-    fun isSquinting(leftEyeOpenProbability: Float?, rightEyeOpenProbability: Float?): Boolean {
-        return areBothEyesBelowThreshold(leftEyeOpenProbability, rightEyeOpenProbability, eyeOpenThreshold)
+    fun isSquinting(face: Face, threshold: Float = eyeOpenThreshold): Boolean {
+        return areBothEyesBelowThreshold(
+            leftEyeOpenProbability = face.leftEyeOpenProbability,
+            rightEyeOpenProbability = face.rightEyeOpenProbability,
+            threshold = threshold,
+        ) && !isSmiling(face)
     }
 
     fun areBothEyesBelowThreshold(
@@ -83,6 +87,65 @@ class PostureAndEyeDetector {
         val leftOpen = leftEyeOpenProbability ?: return false
         val rightOpen = rightEyeOpenProbability ?: return false
         return leftOpen > threshold && rightOpen > threshold
+    }
+
+    /**
+     * ML Kit does not provide a separate teeth signal, so a reliable smile is inferred
+     * from its smile classifier or from visibly raised mouth corners.
+     */
+    fun isSmiling(face: Face): Boolean {
+        val smileProbability = face.smilingProbability ?: 0f
+        if (smileProbability >= SMILE_PROBABILITY_THRESHOLD) return true
+
+        val cornerLiftRatio = computeMouthCornerLiftRatio(face) ?: 0f
+        if (cornerLiftRatio >= MOUTH_CORNER_LIFT_RATIO_THRESHOLD) return true
+
+        val mouthOpenRatio = computeMouthOpenRatio(face) ?: 0f
+        // ML Kit has no direct teeth contour. A clearly open, wide mouth is the most
+        // reliable geometry-only fallback for a broad, teeth-showing smile.
+        if (
+            mouthOpenRatio >= OPEN_SMILE_MOUTH_RATIO_THRESHOLD &&
+            (computeMouthWidthRatio(face) ?: 0f) >= OPEN_SMILE_MOUTH_WIDTH_RATIO_THRESHOLD
+        ) {
+            return true
+        }
+        return smileProbability >= OPEN_SMILE_PROBABILITY_THRESHOLD &&
+            mouthOpenRatio >= MODERATE_OPEN_SMILE_MOUTH_RATIO_THRESHOLD
+    }
+
+    private fun computeMouthCornerLiftRatio(face: Face): Float? {
+        val upperLipPoints = face.getContour(FaceContour.UPPER_LIP_TOP)?.points ?: return null
+        val faceHeight = face.boundingBox.height().toFloat()
+        if (upperLipPoints.size < 3 || faceHeight <= 0f) return null
+
+        val leftCorner = upperLipPoints.minByOrNull { it.x } ?: return null
+        val rightCorner = upperLipPoints.maxByOrNull { it.x } ?: return null
+        val mouthCenterY = upperLipPoints.map { it.y }.average().toFloat()
+        val cornerY = (leftCorner.y + rightCorner.y) / 2f
+
+        // Android image coordinates grow downward, so a positive result means raised corners.
+        return (mouthCenterY - cornerY) / faceHeight
+    }
+
+    private fun computeMouthOpenRatio(face: Face): Float? {
+        val upperInnerLip = face.getContour(FaceContour.UPPER_LIP_BOTTOM)?.points ?: return null
+        val lowerInnerLip = face.getContour(FaceContour.LOWER_LIP_TOP)?.points ?: return null
+        val faceHeight = face.boundingBox.height().toFloat()
+        if (upperInnerLip.isEmpty() || lowerInnerLip.isEmpty() || faceHeight <= 0f) return null
+
+        val upperY = upperInnerLip.map { it.y }.average().toFloat()
+        val lowerY = lowerInnerLip.map { it.y }.average().toFloat()
+        return abs(lowerY - upperY) / faceHeight
+    }
+
+    private fun computeMouthWidthRatio(face: Face): Float? {
+        val upperLipPoints = face.getContour(FaceContour.UPPER_LIP_TOP)?.points ?: return null
+        val faceWidth = face.boundingBox.width().toFloat()
+        if (upperLipPoints.size < 2 || faceWidth <= 0f) return null
+
+        val minX = upperLipPoints.minOf { it.x }
+        val maxX = upperLipPoints.maxOf { it.x }
+        return (maxX - minX) / faceWidth
     }
 
     private fun contourCenter(face: Face, contourType: Int): PointF? {
@@ -147,7 +210,7 @@ class PostureAndEyeDetector {
             }
 
             // 2. 偵測瞇眼 (使用 ML Kit 分類結果)
-            if (enableSquintWarning && isSquinting(detectedFace.leftEyeOpenProbability, detectedFace.rightEyeOpenProbability)) {
+            if (enableSquintWarning && isSquinting(detectedFace)) {
                 warnings.add(WarningState.SQUINTING)
             }
         }
@@ -172,5 +235,14 @@ class PostureAndEyeDetector {
             rightEye != null &&
             leftEyeOpenProbability != null &&
             rightEyeOpenProbability != null
+    }
+
+    private companion object {
+        const val SMILE_PROBABILITY_THRESHOLD = 0.45f
+        const val MOUTH_CORNER_LIFT_RATIO_THRESHOLD = 0.008f
+        const val OPEN_SMILE_PROBABILITY_THRESHOLD = 0.30f
+        const val OPEN_SMILE_MOUTH_RATIO_THRESHOLD = 0.025f
+        const val OPEN_SMILE_MOUTH_WIDTH_RATIO_THRESHOLD = 0.42f
+        const val MODERATE_OPEN_SMILE_MOUTH_RATIO_THRESHOLD = 0.020f
     }
 }
