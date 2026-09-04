@@ -714,7 +714,7 @@ private fun MonitoringMetricChip(
         onClick = {},
         enabled = false,
         label = {
-            Text("$label：提醒 $reminderCount 次，立即改正 $correctedCount 次")
+            Text("$label：$reminderCount 次，立即改正 $correctedCount 次")
         }
     )
 }
