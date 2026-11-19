@@ -103,7 +103,7 @@ class SettingsFragment : Fragment() {
                     val isDarkTheme = isSystemInDarkTheme()
                     Surface(
                         modifier = Modifier.fillMaxSize(),
-                        color = if (isDarkTheme) NeutralDarkPageBackground else MaterialTheme.colorScheme.background
+                        color = if (isDarkTheme) NeutralDarkPageBackground else Color(0xFF55D7CB)
                     ) {
                         SettingsScreen(
                             viewModel = viewModel,
@@ -131,9 +131,9 @@ private fun SettingsScreen(
     val cardTitleTextColor = if (isDarkTheme) NeutralDarkCardTitleText else MaterialTheme.colorScheme.onSurface
     val cardBodyTextColor = if (isDarkTheme) NeutralDarkCardBodyText else MaterialTheme.colorScheme.onSurfaceVariant
     val switchColors = SwitchDefaults.colors(
-        checkedTrackColor = NeutralAccentColor,
+        checkedTrackColor = if (isDarkTheme) NeutralAccentColor else Color(0xFF43BFAF),
         checkedThumbColor = Color.White,
-        checkedBorderColor = NeutralAccentColor
+        checkedBorderColor = if (isDarkTheme) NeutralAccentColor else Color(0xFF43BFAF)
     )
 
     val context = LocalContext.current
@@ -201,14 +201,47 @@ private fun SettingsScreen(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(20.dp),
+            .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text(stringResource(id = R.string.title_settings), style = MaterialTheme.typography.headlineSmall)
-        Text(
-            stringResource(id = R.string.settings_subtitle),
-            color = if (isDarkTheme) NeutralDarkCardBodyText else MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = if (isDarkTheme) Color(0xFF242424) else Color(0xFFC8FFF5),
+            shape = RoundedCornerShape(24.dp),
+            shadowElevation = 3.dp
+        ) {
+            Row(
+                modifier = Modifier.padding(18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Surface(
+                    color = if (isDarkTheme) Color(0xFF333333) else Color.White,
+                    shape = RoundedCornerShape(20.dp),
+                    shadowElevation = 2.dp
+                ) {
+                    Text(
+                        text = "⚙",
+                        modifier = Modifier.padding(horizontal = 17.dp, vertical = 13.dp),
+                        fontSize = 28.sp,
+                        color = if (isDarkTheme) Color.White else Color(0xFF247E72)
+                    )
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(
+                        stringResource(id = R.string.title_settings),
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = if (isDarkTheme) Color.White else Color(0xFF173B39),
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        stringResource(id = R.string.settings_subtitle),
+                        color = if (isDarkTheme) NeutralDarkCardBodyText else Color(0xFF416866),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        }
 
         Card(
             modifier = Modifier
@@ -241,9 +274,10 @@ private fun SettingsScreen(
                 Button(
                     onClick = onOpenCalibration,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF1A1A1A),
+                        containerColor = if (isDarkTheme) NeutralAccentColor else Color(0xFF247E72),
                         contentColor = Color.White
-                    )
+                    ),
+                    shape = RoundedCornerShape(14.dp)
                 ) {
                     Text(stringResource(id = R.string.start_calibration), color = Color.White)
                 }
@@ -268,7 +302,7 @@ private fun SettingsScreen(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Text("設定", style = MaterialTheme.typography.titleMedium, color = cardTitleTextColor)
+                Text("護眼小幫手", style = MaterialTheme.typography.titleMedium, color = cardTitleTextColor)
 
                 FeatureToggleRow(
                     title = stringResource(id = R.string.eye_settings_dark_mode_title),
@@ -287,7 +321,7 @@ private fun SettingsScreen(
                 )
 
                 Text(
-                    stringResource(id = R.string.eye_settings_section_features),
+                    "更多護眼功能",
                     style = MaterialTheme.typography.titleMedium,
                     color = cardTitleTextColor
                 )
@@ -730,7 +764,21 @@ private fun FeatureToggleRow(
     beta: Boolean = false,
     onCheckedChange: (Boolean) -> Unit
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    val isDarkTheme = isSystemInDarkTheme()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                color = when {
+                    isDarkTheme -> Color(0xFF262626)
+                    checked -> Color(0xFFE2F7F2)
+                    else -> Color(0xFFF5FAF9)
+                },
+                shape = RoundedCornerShape(16.dp)
+            )
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -738,11 +786,18 @@ private fun FeatureToggleRow(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(title, style = MaterialTheme.typography.titleSmall, color = titleColor)
                 if (beta) {
-                    AssistChip(
-                        onClick = {},
-                        enabled = false,
-                        label = { Text("Beta", color = descriptionColor) }
-                    )
+                    Surface(
+                        color = if (isDarkTheme) Color(0xFF363636) else Color(0xFFE1F2EF),
+                        shape = RoundedCornerShape(999.dp),
+                        border = BorderStroke(1.dp, if (isDarkTheme) Color(0xFF555555) else Color(0xFFB7DDD7))
+                    ) {
+                        Text(
+                            text = "Beta",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            color = descriptionColor,
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
                 }
             }
             Text(description, color = descriptionColor, style = MaterialTheme.typography.bodySmall)

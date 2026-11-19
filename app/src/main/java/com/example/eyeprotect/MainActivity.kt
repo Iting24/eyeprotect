@@ -124,7 +124,7 @@ class MainActivity : AppCompatActivity() {
     }
 }
 
-private val BottomNavMaxWidth = 348.dp
+private val BottomNavMaxWidth = 400.dp
 
 private data class BottomNavItem(
     val destinationId: Int,
@@ -253,6 +253,12 @@ private fun bottomNavItems(): List<BottomNavItem> {
             destinationId = R.id.leeBuLeeFragment,
             iconRes = R.drawable.ic_nav_leebulee,
             labelRes = R.string.nav_leebulee
+        ),
+        BottomNavItem(
+            destinationId = R.id.rankReportFragment,
+            iconRes = R.drawable.ic_nav_dashboard_eye_closed,
+            selectedIconRes = R.drawable.ic_nav_dashboard_eye_open,
+            labelRes = R.string.nav_rank_report
         ),
         BottomNavItem(
             destinationId = R.id.settingsFragment,

@@ -25,6 +25,8 @@ class RoomMonitoringReportRepository @Inject constructor(
     private var activeSessionId: String? = null
     private var activeSessionStartedAtEpochMs: Long = 0L
     private var lastRecordedWarningsMask: Int? = null
+    private var lastRecordedValidity: Boolean? = null
+    private var lastStatusAtEpochMs: Long = 0L
 
     override fun startSession() {
         runBlocking(serialDispatcher) {
@@ -36,6 +38,8 @@ class RoomMonitoringReportRepository @Inject constructor(
                 activeSessionId = sessionId
                 activeSessionStartedAtEpochMs = startedAtEpochMs
                 lastRecordedWarningsMask = 0
+                lastRecordedValidity = false
+                lastStatusAtEpochMs = startedAtEpochMs
                 correctionTracker.clear()
 
                 dao.insertSession(
@@ -94,6 +98,8 @@ class RoomMonitoringReportRepository @Inject constructor(
                 activeSessionId = null
                 activeSessionStartedAtEpochMs = 0L
                 lastRecordedWarningsMask = null
+                lastRecordedValidity = null
+                lastStatusAtEpochMs = 0L
                 correctionTracker.clear()
             }
         }
@@ -104,6 +110,8 @@ class RoomMonitoringReportRepository @Inject constructor(
             mutex.withLock {
                 val sessionId = activeSessionId ?: return@withLock
                 val nowEpochMs = System.currentTimeMillis()
+
+                if (!metrics.isCameraFrame) return@withLock
 
                 correctionTracker.resolveFromWarnings(
                     warningsMask = metrics.warningsMask,
@@ -125,9 +133,15 @@ class RoomMonitoringReportRepository @Inject constructor(
                     }
                 }
 
-                if (lastRecordedWarningsMask == metrics.warningsMask) return@withLock
+                // Camera frames are the only evidence of valid monitoring time.
+                val valid = metrics.faceDetected && metrics.poseDetected && !metrics.faceError && !metrics.poseError
+                if (lastRecordedWarningsMask == metrics.warningsMask &&
+                    lastRecordedValidity == valid && nowEpochMs - lastStatusAtEpochMs < 5_000L
+                ) return@withLock
 
                 lastRecordedWarningsMask = metrics.warningsMask
+                lastRecordedValidity = valid
+                lastStatusAtEpochMs = nowEpochMs
                 dao.insertStatusEvent(
                     MonitoringStatusEventEntity(
                         sessionId = sessionId,

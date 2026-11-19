@@ -30,6 +30,11 @@
         android:label="@string/start_calibration" />
 
     <fragment
+        android:id="@+id/rankReportFragment"
+        android:name="com.example.eyeprotect.nav.RankReportFragment"
+        android:label="@string/nav_rank_report" />
+
+    <fragment
         android:id="@+id/settingsFragment"
         android:name="com.example.eyeprotect.nav.SettingsFragment"
         android:label="@string/nav_settings">

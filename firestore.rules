@@ -1,0 +1,140 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function memberPath(roomId, uid) {
+      return /databases/$(database)/documents/rooms/$(roomId)/members/$(uid);
+    }
+
+    function isMember(roomId) {
+      return signedIn() && exists(memberPath(roomId, request.auth.uid));
+    }
+
+    function isOwner(roomId) {
+      return signedIn()
+        && get(/databases/$(database)/documents/rooms/$(roomId)).data.ownerUid == request.auth.uid;
+    }
+
+    function isOwnerAfter(roomId) {
+      return signedIn()
+        && getAfter(/databases/$(database)/documents/rooms/$(roomId)).data.ownerUid == request.auth.uid;
+    }
+
+    function isActiveRoom(roomId) {
+      return get(/databases/$(database)/documents/rooms/$(roomId)).data.status == "active";
+    }
+
+    match /users/{userId} {
+      allow read, create, update, delete: if signedIn() && request.auth.uid == userId;
+
+      match /rooms/{roomId} {
+        allow read, create, update: if signedIn() && request.auth.uid == userId;
+        allow delete: if signedIn()
+          && (request.auth.uid == userId || isOwner(roomId));
+      }
+    }
+
+    match /invites/{inviteCode} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          "roomId", "roomName", "ownerUid", "inviteCode", "timezoneId", "active", "createdAt"
+        ])
+        && inviteCode == request.resource.data.inviteCode
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.active == true
+        && request.resource.data.createdAt == request.time
+        && isOwnerAfter(request.resource.data.roomId);
+      allow update: if signedIn()
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.roomId == resource.data.roomId
+        && request.resource.data.inviteCode == resource.data.inviteCode;
+      allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
+    }
+
+    match /rooms/{roomId} {
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly([
+          "name", "ownerUid", "inviteCode", "timezoneId", "status", "createdAt", "schemaVersion"
+        ])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 40
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.inviteCode is string
+        && request.resource.data.inviteCode.size() == 6
+        && request.resource.data.timezoneId is string
+        && request.resource.data.timezoneId.size() > 0
+        && request.resource.data.timezoneId.size() <= 64
+        && request.resource.data.status == "active"
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.schemaVersion == 1;
+      allow read: if isMember(roomId);
+      allow update: if isOwner(roomId)
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.inviteCode == resource.data.inviteCode
+        && request.resource.data.timezoneId == resource.data.timezoneId
+        && request.resource.data.schemaVersion == resource.data.schemaVersion;
+      allow delete: if isOwner(roomId);
+
+      match /members/{userId} {
+        allow read: if isMember(roomId);
+        allow create: if signedIn()
+          && request.auth.uid == userId
+          && request.resource.data.uid == userId
+          && (
+            isOwnerAfter(roomId)
+            || (
+              request.resource.data.role == "member"
+              && request.resource.data.inviteCodeUsed is string
+              && exists(/databases/$(database)/documents/invites/$(request.resource.data.inviteCodeUsed))
+              && get(/databases/$(database)/documents/invites/$(request.resource.data.inviteCodeUsed)).data.roomId == roomId
+              && get(/databases/$(database)/documents/invites/$(request.resource.data.inviteCodeUsed)).data.active == true
+            )
+          );
+        allow update: if signedIn()
+          && request.auth.uid == userId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["displayName"])
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() >= 2
+          && request.resource.data.displayName.size() <= 16;
+        allow delete: if (signedIn() && request.auth.uid == userId) || isOwner(roomId);
+      }
+
+      match /dailyScores/{scoreId} {
+        allow read: if isMember(roomId);
+        allow create, update: if isMember(roomId)
+          && isActiveRoom(roomId)
+          && request.resource.data.keys().hasOnly([
+            "uid", "displayName", "localDate", "effectiveMs", "slouchMs",
+            "squintEvents", "tooCloseEvents", "updatedAt", "schemaVersion"
+          ])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.displayName == get(memberPath(roomId, request.auth.uid)).data.displayName
+          && scoreId == request.resource.data.localDate + "_" + request.auth.uid
+          && request.resource.data.schemaVersion == 1
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.effectiveMs is int
+          && request.resource.data.effectiveMs >= 0
+          && request.resource.data.effectiveMs <= 86400000
+          && request.resource.data.slouchMs is int
+          && request.resource.data.slouchMs >= 0
+          && request.resource.data.slouchMs <= request.resource.data.effectiveMs
+          && request.resource.data.squintEvents is int
+          && request.resource.data.squintEvents >= 0
+          && request.resource.data.squintEvents <= 10000
+          && request.resource.data.tooCloseEvents is int
+          && request.resource.data.tooCloseEvents >= 0
+          && request.resource.data.tooCloseEvents <= 10000;
+        allow delete: if signedIn()
+          && (request.auth.uid == resource.data.uid || isOwner(roomId));
+      }
+    }
+  }
+}

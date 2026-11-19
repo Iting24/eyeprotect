@@ -8,15 +8,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 enum class AssistMode(val title: String) {
-    RED("Red"),
-    GREEN("Green"),
-    BLUE("Blue"),
-    YELLOW("Yellow"),
-    ORANGE("Orange"),
-    BROWN("Brown"),
-    INDIGO("Indigo"),
-    PURPLE("Purple"),
-    NONE("Off")
+    RED("紅色"),
+    GREEN("綠色"),
+    BLUE("藍色"),
+    YELLOW("黃色"),
+    ORANGE("橘色"),
+    BROWN("棕色"),
+    INDIGO("靛色"),
+    PURPLE("紫色"),
+    NONE("關閉")
 }
 
 data class MaskTransform(

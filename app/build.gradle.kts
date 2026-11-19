@@ -4,6 +4,7 @@ plugins {
   alias(libs.plugins.ksp)
   alias(libs.plugins.hilt)
   alias(libs.plugins.kotlin.compose)
+  alias(libs.plugins.google.services)
 }
 
 android {
@@ -76,10 +77,15 @@ dependencies {
   implementation(libs.androidx.camera.core)
   implementation(libs.androidx.camera.camera2)
   implementation(libs.androidx.camera.view)
-  implementation(libs.play.services.mlkit.face.detection)
+  implementation(libs.mlkit.face.detection)
   implementation(libs.mlkit.pose.detection)
   implementation(libs.androidx.camera.lifecycle)
   implementation(libs.guava)
+
+  // Firebase
+  implementation(platform(libs.firebase.bom))
+  implementation(libs.firebase.auth)
+  implementation(libs.firebase.firestore)
   testImplementation(libs.junit)
   androidTestImplementation(libs.androidx.junit)
   androidTestImplementation(libs.androidx.espresso.core)

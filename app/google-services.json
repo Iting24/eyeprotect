@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "977014576690",
+    "project_id": "eyeprotect-b14ec",
+    "storage_bucket": "eyeprotect-b14ec.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:977014576690:android:bfe0d4943d0b40e9b80e2b",
+        "android_client_info": {
+          "package_name": "com.example.eyeprotect"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCOK52q70yRTF2u_W830J2JqLLMdM6i_SM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

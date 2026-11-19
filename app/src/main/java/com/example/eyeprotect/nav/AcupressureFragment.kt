@@ -105,7 +105,7 @@ class AcupressureFragment : Fragment() {
             selectedSymptomsContainer.addView(
                 TextView(requireContext()).apply {
                     text = "尚未選擇症狀"
-                    setTextColor(Color.parseColor("#666666"))
+                    setTextColor(Color.parseColor("#6B7D7B"))
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
                     gravity = Gravity.CENTER_VERTICAL
                     layoutParams = LinearLayout.LayoutParams(
@@ -154,7 +154,7 @@ class AcupressureFragment : Fragment() {
         chip.setBackgroundResource(
             if (isSelected) R.drawable.bg_acupressure_chip_blue else R.drawable.bg_acupressure_chip_gray
         )
-        chip.setTextColor(Color.WHITE)
+        chip.setTextColor(Color.parseColor(if (isSelected) "#FFFFFF" else "#315F5A"))
     }
 
     private fun setupNextButton() {

@@ -59,4 +59,5 @@
     <string name="eye_settings_night_shift_auto_hint">若你覺得這種光線下太黃或不夠暖，切到手動調整後，系統會記住這種環境的修正。</string>
     <string name="eye_settings_night_shift_manual_learning_hint">手動調整後，系統會把這次設定記成目前亮度環境的自動偏好。</string>
     <string name="eye_settings_night_shift_reset_preference">重置學習偏好</string>
+    <string name="nav_rank_report">排名報表</string>
 </resources>

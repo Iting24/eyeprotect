@@ -17,6 +17,10 @@
         android:icon="@drawable/ic_nav_leebulee"
         android:title="@string/nav_leebulee" />
     <item
+        android:id="@+id/rankReportFragment"
+        android:icon="@drawable/ic_nav_dashboard_eye_closed"
+        android:title="@string/nav_rank_report" />
+    <item
         android:id="@+id/settingsFragment"
         android:icon="@drawable/ic_nav_settings"
         android:title="@string/nav_settings" />

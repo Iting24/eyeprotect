@@ -102,6 +102,9 @@ interface MonitoringReportDao {
     )
     fun observeLatestCompletedSession(): Flow<MonitoringSessionEntity?>
 
+    @Query("SELECT * FROM monitoring_status_event WHERE recordedAtEpochMs >= :fromEpochMs ORDER BY recordedAtEpochMs ASC, id ASC")
+    fun observeStatusEventsSince(fromEpochMs: Long): Flow<List<MonitoringStatusEventEntity>>
+
     @Query(
         """
         SELECT *

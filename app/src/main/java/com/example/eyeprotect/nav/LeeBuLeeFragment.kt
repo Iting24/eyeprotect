@@ -13,13 +13,19 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -27,8 +33,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
@@ -66,7 +74,7 @@ class LeeBuLeeFragment : Fragment() {
         return ComposeView(requireContext()).apply {
             setContent {
                 EyeprotectTheme {
-                    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                    Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF55D7CB)) {
                         LeeBuLeeScreen(
                             monitoringEnabled = monitoringEnabled,
                             onMonitoringChange = { enabled ->
@@ -141,35 +149,123 @@ private fun LeeBuLeeScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text(stringResource(id = R.string.title_leebulee), style = MaterialTheme.typography.headlineSmall)
-        Text(
-            text = stringResource(id = R.string.leebulee_subtitle),
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = Color(0xFFC8FFF5),
+            shape = RoundedCornerShape(24.dp),
+            shadowElevation = 3.dp
         ) {
-            Switch(
-                checked = monitoringEnabled,
-                onCheckedChange = onMonitoringChange
-            )
-            Text(
-                text = if (monitoringEnabled) {
-                    stringResource(id = R.string.leebulee_monitoring_on)
-                } else {
-                    stringResource(id = R.string.leebulee_monitoring_off)
-                },
-                style = MaterialTheme.typography.titleMedium
-            )
+            Row(
+                modifier = Modifier.padding(18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(15.dp)
+            ) {
+                Surface(
+                    modifier = Modifier.size(70.dp),
+                    color = Color.White,
+                    shape = CircleShape,
+                    shadowElevation = 2.dp
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("👀", style = MaterialTheme.typography.headlineMedium)
+                    }
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(
+                        text = "走路安全護衛",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = Color(0xFF173B39),
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "讓眼睛寶寶陪你注意前方",
+                        color = Color(0xFF416866),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
         }
-        Text(
-            text = stringResource(id = R.string.leebulee_description),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall
-        )
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = Color.White,
+            shape = RoundedCornerShape(22.dp),
+            shadowElevation = 3.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = if (monitoringEnabled) "安全護衛正在陪你" else "開啟安全護衛",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Color(0xFF173B39),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = if (monitoringEnabled) {
+                                stringResource(id = R.string.leebulee_monitoring_on)
+                            } else {
+                                stringResource(id = R.string.leebulee_monitoring_off)
+                            },
+                            color = if (monitoringEnabled) Color(0xFF247E72) else Color(0xFF6B7D7B),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    Switch(
+                        checked = monitoringEnabled,
+                        onCheckedChange = onMonitoringChange,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = Color(0xFF43BFAF)
+                        )
+                    )
+                }
+
+                Surface(color = Color(0xFFDDF2FF), shape = RoundedCornerShape(16.dp)) {
+                    Text(
+                        text = "小泡泡會留在畫面旁邊，拖曳可以移動；點一下可開關安全畫面。",
+                        modifier = Modifier.padding(14.dp),
+                        color = Color(0xFF36536B),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        }
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = Color.White.copy(alpha = 0.94f),
+            shape = RoundedCornerShape(22.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "使用方式",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color(0xFF173B39),
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text("① 開啟護衛並允許相機與懸浮窗權限", color = Color(0xFF556B68))
+                Text("② 走路低頭時會顯示透明安全畫面", color = Color(0xFF556B68))
+                Text("③ 不使用時回到這裡關閉即可", color = Color(0xFF556B68))
+                Text(
+                    text = stringResource(id = R.string.leebulee_description),
+                    color = Color(0xFF7A8C89),
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
     }
 }

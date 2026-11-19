@@ -1626,6 +1626,23 @@ private fun EyeMascotAvatar(
     }
 }
 
+/** Reuses the exact home-screen mascot artwork for feature help surfaces. */
+@Composable
+internal fun HomeEyeBabyMascot(modifier: Modifier = Modifier) {
+    EyeMascotAvatar(
+        modifier = modifier,
+        dialogue = MascotDialogue(
+            mood = MascotMood.OFFLINE,
+            badge = "待命中",
+            headline = "",
+            tips = emptyList(),
+            accent = Color(0xFF8FA7FF),
+            body = Color(0xFFDCE3FF),
+            eyeOffsetX = 0f
+        )
+    )
+}
+
 @Composable
 private fun SpeechBubble(
     text: String,

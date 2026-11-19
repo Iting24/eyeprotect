@@ -2,7 +2,7 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F7F4F8"
+    android:background="#55D7CB"
     android:fillViewport="true">
 
     <LinearLayout
@@ -11,22 +11,68 @@
         android:orientation="vertical"
         android:padding="16dp">
 
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_acupressure_hero"
+            android:elevation="3dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="18dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="眼周放鬆時光"
+                    android:textColor="#173B39"
+                    android:textSize="24sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:lineSpacingExtra="2dp"
+                    android:text="告訴眼睛寶寶哪裡不舒服，\n幫你安排適合的按摩穴位。"
+                    android:textColor="#416866"
+                    android:textSize="14sp" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="68dp"
+                android:layout_height="68dp"
+                android:background="@drawable/bg_acupressure_mascot"
+                android:gravity="center"
+                android:text="(•◡•)"
+                android:textColor="#2A7169"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
         <TextView
             android:id="@+id/titleSelected"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="已選症狀"
-            android:textColor="#0B4A8B"
+            android:layout_marginTop="20dp"
+            android:text="你的選擇"
+            android:textColor="#173B39"
             android:textSize="18sp"
             android:textStyle="bold" />
 
         <LinearLayout
             android:id="@+id/selectedSymptomsContainer"
             android:layout_width="match_parent"
-            android:layout_height="150dp"
+            android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
             android:background="@drawable/bg_acupressure_selected_area"
-            android:gravity="top"
+            android:gravity="center_vertical"
+            android:minHeight="82dp"
             android:orientation="vertical"
             android:padding="12dp" />
 
@@ -35,8 +81,8 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
-            android:text="請選擇症狀"
-            android:textColor="#0B4A8B"
+            android:text="今天哪裡不舒服？"
+            android:textColor="#173B39"
             android:textSize="18sp"
             android:textStyle="bold" />
 
@@ -165,7 +211,8 @@
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
-            android:text="下一步   ➜"
+            android:elevation="3dp"
+            android:text="開始我的按摩引導  →"
             android:textColor="#FFFFFF"
             android:textSize="17sp"
             android:textStyle="bold" />

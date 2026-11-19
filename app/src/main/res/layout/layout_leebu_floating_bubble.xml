@@ -1,14 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="wrap_content"
-    android:layout_height="wrap_content"
-    android:padding="8dp">
+    android:layout_width="88dp"
+    android:layout_height="96dp"
+    android:padding="6dp">
 
-    <ImageView
+    <TextView
         android:id="@+id/star_icon"
-        android:layout_width="60dp"
-        android:layout_height="60dp"
-        android:src="@android:drawable/btn_star_big_on"
-        android:contentDescription="Floating Star" />
+        android:layout_width="74dp"
+        android:layout_height="74dp"
+        android:layout_gravity="top|center_horizontal"
+        android:background="@drawable/bg_monitoring_bubble"
+        android:contentDescription="監控泡泡，點擊可開關走路安全畫面"
+        android:elevation="8dp"
+        android:gravity="center"
+        android:text="👀"
+        android:textSize="30sp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="28dp"
+        android:layout_gravity="bottom|center_horizontal"
+        android:background="@drawable/bg_monitoring_bubble_badge"
+        android:elevation="10dp"
+        android:gravity="center"
+        android:paddingStart="10dp"
+        android:paddingEnd="10dp"
+        android:text="安全護衛"
+        android:textColor="#FFFFFF"
+        android:textSize="11sp"
+        android:textStyle="bold" />
 
 </FrameLayout>
